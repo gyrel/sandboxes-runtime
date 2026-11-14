@@ -2,6 +2,8 @@ module github.com/rheic/sandboxes-runtime
 
 go 1.27
 
+toolchain go1.27.4
+
 require (
 	github.com/containerd/containerd/v2 v2.4.2
 	github.com/opencontainers/runtime-spec v1.3.0
