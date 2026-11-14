@@ -7,9 +7,16 @@
 - Extend the pinned gvproxy patch with a dedicated Git upload-pack forward
   endpoint. It keeps the allocated listener bound to IPv4 loopback and reports
   its actual port; generic forward requests cannot request port zero.
+- Render read-only workspace bind mounts with `options=rbind:ro:rro` so the
+  guest applies read-only recursively to nested submounts. Rejection by the
+  guest runtime or kernel fails sandbox creation instead of retrying with a
+  shallow `ro` bind.
 
 ### Security and limitations
 
+- Recursive read-only workspace mounts require the pinned guest crun with
+  `rro` support and a guest kernel with `mount_setattr(AT_RECURSIVE)` (Linux
+  5.12 or newer; the pinned guest kernel is 6.12.109).
 - Patch application and upstream package tests passed against the pinned
   gvisor-tap-vsock commit. Live VM and host Git remote lifecycle remain open.
 

@@ -242,6 +242,41 @@ func TestRunBuildsCommand(t *testing.T) {
 	}
 }
 
+func TestMountSpecRendering(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		mount Mount
+		want  string
+	}{
+		{
+			name:  "writable",
+			mount: Mount{Source: "/host", Destination: "/guest"},
+			want:  "type=bind,src=/host,dst=/guest,options=rbind:rw",
+		},
+		{
+			name:  "read only",
+			mount: Mount{Source: "/host", Destination: "/guest", ReadOnly: true},
+			want:  "type=bind,src=/host,dst=/guest,options=rbind:ro",
+		},
+		{
+			name:  "recursive read only",
+			mount: Mount{Source: "/host", Destination: "/guest", ReadOnly: true, RecursiveReadOnly: true},
+			want:  "type=bind,src=/host,dst=/guest,options=rbind:ro:rro",
+		},
+		{
+			name:  "non bind",
+			mount: Mount{Type: "ext4", Source: "/vol.img", Destination: "/data", ReadOnly: true, RecursiveReadOnly: true},
+			want:  "type=ext4,src=/vol.img,dst=/data",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mountSpec(tc.mount); got != tc.want {
+				t.Fatalf("mountSpec() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestEnsureImage(t *testing.T) {
 	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
 		if strings.Contains(strings.Join(args, " "), "images ls") {
@@ -305,10 +340,11 @@ func TestBackendCreate(t *testing.T) {
 
 func TestWorkspaceMountsGuestDestination(t *testing.T) {
 	tests := []struct {
-		name         string
-		workspace    runtime.Workspace
-		wantDest     string
-		wantReadOnly bool
+		name                  string
+		workspace             runtime.Workspace
+		wantDest              string
+		wantReadOnly          bool
+		wantRecursiveReadOnly bool
 	}{
 		{
 			name:      "default keeps host path",
@@ -321,10 +357,11 @@ func TestWorkspaceMountsGuestDestination(t *testing.T) {
 			wantDest:  "/workspace/project",
 		},
 		{
-			name:         "read only alternate destination",
-			workspace:    runtime.Workspace{Path: "/host/source", GuestPath: "/workspace/project", ReadOnly: true},
-			wantDest:     "/workspace/project",
-			wantReadOnly: true,
+			name:                  "read only alternate destination",
+			workspace:             runtime.Workspace{Path: "/host/source", GuestPath: "/workspace/project", ReadOnly: true},
+			wantDest:              "/workspace/project",
+			wantReadOnly:          true,
+			wantRecursiveReadOnly: true,
 		},
 	}
 	for _, tt := range tests {
@@ -336,7 +373,8 @@ func TestWorkspaceMountsGuestDestination(t *testing.T) {
 			if len(mounts) != 1 {
 				t.Fatalf("mount count = %d, want 1", len(mounts))
 			}
-			if mounts[0].Source != tt.workspace.Path || mounts[0].Destination != tt.wantDest || mounts[0].ReadOnly != tt.wantReadOnly {
+			if mounts[0].Source != tt.workspace.Path || mounts[0].Destination != tt.wantDest ||
+				mounts[0].ReadOnly != tt.wantReadOnly || mounts[0].RecursiveReadOnly != tt.wantRecursiveReadOnly {
 				t.Fatalf("mount = %+v", mounts[0])
 			}
 		})
@@ -390,7 +428,7 @@ func TestBackendCreateUsesGuestWorkspaceDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := strings.Join(runner.calls[len(runner.calls)-1], " ")
-	if want := "type=bind,src=/host/source,dst=/workspace/project,options=rbind:ro"; !strings.Contains(args, want) {
+	if want := "type=bind,src=/host/source,dst=/workspace/project,options=rbind:ro:rro"; !strings.Contains(args, want) {
 		t.Fatalf("missing guest workspace mount %q in %q", want, args)
 	}
 }
@@ -585,6 +623,41 @@ func TestCreateRemovesContainerWhenRunFails(t *testing.T) {
 	calls := fmt.Sprint(runner.calls)
 	if !strings.Contains(calls, "containers delete rheic-dev") {
 		t.Fatalf("partial container was not removed: %s", calls)
+	}
+}
+
+func TestCreateRecursiveReadOnlyMountFailsClosed(t *testing.T) {
+	runCalls := 0
+	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
+		if strings.Contains(strings.Join(args, " "), " run --detach") {
+			runCalls++
+			return []byte("mount_setattr '/workspace': invalid argument"), errors.New("exit status 1")
+		}
+		return nil, nil
+	}}
+	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22"}
+	_, err := backend.Create(context.Background(), runtime.Config{
+		Name: "dev",
+		Workspaces: []runtime.Workspace{{
+			Path:      "/host/source",
+			GuestPath: "/workspace",
+			ReadOnly:  true,
+		}},
+	})
+	if err == nil {
+		t.Fatal("rejected rro mount returned no error")
+	}
+	if runCalls != 1 {
+		t.Fatalf("runtime retried instead of failing closed: %d run attempts", runCalls)
+	}
+	for _, want := range []string{
+		"recursive read-only workspace mount rejected",
+		"mount_setattr",
+		"options=rbind:ro:rro",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %q", err, want)
+		}
 	}
 }
 

@@ -39,7 +39,11 @@ make runtime-verify
 
 `ctr` is the first lifecycle adapter. It uses a pinned containerd CLI and
 implements the `runtime.Backend` contract: image pull, detached run, task
-start/stop/delete, and workspace bind mounts.
+start/stop/delete, and workspace bind mounts. Read-only workspaces use the
+recursive `rro` option (`options=rbind:ro:rro`) so nested submounts are
+read-only too. This relies on the pinned guest crun and a guest kernel with
+`mount_setattr(AT_RECURSIVE)` support; if the guest rejects the option, sandbox
+creation fails closed rather than falling back to a shallow `ro` bind.
 
 Current limits are explicit:
 
