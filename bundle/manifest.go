@@ -29,6 +29,8 @@ const (
 
 var requiredComponents = []string{"containerd", "ctr", "nerdbox-shim", "gvproxy", "libkrun", "kernel", "guest-rootfs"}
 
+var openBundleRootTestHook func()
+
 // Manifest is a content inventory, not a provenance statement.
 type Manifest struct {
 	SchemaVersion int        `json:"schema_version"`
@@ -130,9 +132,21 @@ func openBundleRoot(root string) (*os.Root, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve bundle root: %w", err)
 	}
+	if openBundleRootTestHook != nil {
+		openBundleRootTestHook()
+	}
 	rootDir, err := os.OpenRoot(absolute)
 	if err != nil {
 		return nil, fmt.Errorf("open bundle root: %w", err)
+	}
+	openedInfo, err := rootDir.Stat(".")
+	if err != nil {
+		_ = rootDir.Close()
+		return nil, fmt.Errorf("inspect opened bundle root: %w", err)
+	}
+	if !os.SameFile(info, openedInfo) {
+		_ = rootDir.Close()
+		return nil, errors.New("bundle root changed while opening")
 	}
 	return rootDir, nil
 }

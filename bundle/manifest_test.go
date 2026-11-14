@@ -11,6 +11,49 @@ import (
 	"testing"
 )
 
+func TestOpenBundleRootRejectsPathReplacement(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	replacement := filepath.Join(parent, "replacement")
+	parked := filepath.Join(parent, "parked")
+	for _, dir := range []string{root, replacement} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "marker"), []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(replacement, "marker"), []byte("replacement"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	openBundleRootTestHook = func() {
+		t.Helper()
+		if err := os.Rename(root, parked); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(replacement, root); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { openBundleRootTestHook = nil })
+	if rootDir, err := openBundleRoot(root); err == nil {
+		_ = rootDir.Close()
+		t.Fatal("accepted a replaced bundle root")
+	} else if !strings.Contains(err.Error(), "changed while opening") {
+		t.Fatalf("openBundleRoot() error = %v, want root identity mismatch", err)
+	}
+	for name, want := range map[string]string{
+		filepath.Join(parked, "marker"): "original",
+		filepath.Join(root, "marker"):   "replacement",
+	} {
+		data, err := os.ReadFile(name)
+		if err != nil || string(data) != want {
+			t.Errorf("marker %q = %q, %v; want %q", name, data, err, want)
+		}
+	}
+}
+
 func TestVerifyPartialBundle(t *testing.T) {
 	root := writeTestBundle(t, "linux/arm64", Partial, map[string]string{"shim": "test shim"})
 	if _, err := Verify(root, Options{ExpectedPlatform: "linux/arm64", AllowPartial: true}); err != nil {
