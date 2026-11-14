@@ -398,8 +398,10 @@ synthetic fixtures only and publishes no artifacts.
 
 The `required-roles` label checks a minimum declared component subset and file
 consistency only. It does not prove the binaries execute, that a VM boots, or that isolation and
-cleanup work. The verifier assumes a private, quiescent staging directory. It is
-not a defense against a concurrent writer with the same user identity.
+cleanup work. The verifier pins the opened root against a path replacement during open, but
+assumes a private, quiescent staging directory for the remaining inventory and
+hash reads. It is not a defense against a concurrent writer with the same user
+identity.
 
 bundle.json is not a trust anchor. Its hashes detect mismatch only when the
 manifest itself is already trusted. Future runtime installers must first
