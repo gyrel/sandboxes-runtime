@@ -70,6 +70,11 @@ tests are recorded in the plan:
   after rule revocation, and reload revocation of active flows. HTTP Host
   and complete DNS-rebinding and bypass guarantees are not established; the
   patch remains experimental.
+  The patch also provides a dedicated `/services/forwarder/expose-git-daemon` endpoint:
+  it binds only `127.0.0.1:0`, forwards only to guest `192.168.127.3:9418`, and
+  returns the actual held listener address. The generic expose endpoint rejects
+  host port zero. This source and package-test evidence does not validate live
+  guest Git daemon startup, host reachability, or remote reconciliation.
 - `patches/nerdbox-gpt-threshold.patch` — the disk allocator follows Linux
   multi-letter names after `vdz` (for example, `vdaa`) for deterministic device
   naming. On Linux, the shim declines a block-device mapping that needs more
