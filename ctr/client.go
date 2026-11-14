@@ -117,6 +117,10 @@ type Mount struct {
 	Source      string
 	Destination string
 	ReadOnly    bool
+	// RecursiveReadOnly applies ReadOnly to every mount in the bind's mount
+	// tree. It is rendered as the rro mount option and is only meaningful when
+	// ReadOnly is set.
+	RecursiveReadOnly bool
 }
 
 // RunSpec describes a detached runtime task.
@@ -182,7 +186,28 @@ func (c *Client) Run(ctx context.Context, spec RunSpec) error {
 		args = append(args, spec.Args...)
 	}
 	_, err := c.run(ctx, args...)
-	return err
+	if err != nil {
+		return recursiveReadOnlyError(spec.Mounts, err)
+	}
+	return nil
+}
+
+// recursiveReadOnlyError makes a rejected rro option actionable. The pinned
+// guest crun understands rro and applies it with mount_setattr(AT_RECURSIVE).
+// If the guest runtime or kernel rejects the option, creating the sandbox must
+// fail; retrying with a shallow ro bind would leave nested submounts writable.
+func recursiveReadOnlyError(mounts []Mount, err error) error {
+	recursive := false
+	for _, mount := range mounts {
+		if mount.ReadOnly && mount.RecursiveReadOnly {
+			recursive = true
+			break
+		}
+	}
+	if !recursive || !strings.Contains(err.Error(), "mount_setattr") {
+		return err
+	}
+	return fmt.Errorf("recursive read-only workspace mount rejected; the guest runtime must support rro via mount_setattr(AT_RECURSIVE) and the guest kernel must be Linux >= 5.12: %w", err)
 }
 
 // StartTask starts a stopped task.
@@ -306,7 +331,13 @@ func mountSpec(m Mount) string {
 		return fmt.Sprintf("type=%s,src=%s,dst=%s", m.Type, m.Source, m.Destination)
 	}
 	options := "rbind:rw"
-	if m.ReadOnly {
+	switch {
+	case m.ReadOnly && m.RecursiveReadOnly:
+		// A plain ro bind only protects the top mount. rro applies
+		// MOUNT_ATTR_RDONLY to the whole mount tree with mount_setattr, so
+		// nested submounts cannot stay writable in the guest.
+		options = "rbind:ro:rro"
+	case m.ReadOnly:
 		options = "rbind:ro"
 	}
 	return fmt.Sprintf("type=bind,src=%s,dst=%s,options=%s", m.Source, m.Destination, options)

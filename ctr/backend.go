@@ -188,7 +188,12 @@ func workspaceMounts(cfg *runtime.Config) ([]Mount, error) {
 			return nil, fmt.Errorf("duplicate workspace guest path %q", destination)
 		}
 		seen[destination] = struct{}{}
-		mounts = append(mounts, Mount{Source: workspace.Path, Destination: destination, ReadOnly: workspace.ReadOnly})
+		mounts = append(mounts, Mount{
+			Source:            workspace.Path,
+			Destination:       destination,
+			ReadOnly:          workspace.ReadOnly,
+			RecursiveReadOnly: workspace.ReadOnly,
+		})
 	}
 
 	// Workspace mounts must not shadow fixed runtime mounts. This is especially
