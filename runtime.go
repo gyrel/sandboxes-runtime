@@ -34,10 +34,13 @@ type Port struct {
 	HostIP   string
 }
 
-// Workspace is a host path mounted at the same absolute path in the guest.
+// Workspace describes a host path mounted into the guest. GuestPath may
+// select a different absolute destination; when empty, Path is used for both
+// the host source and guest destination.
 type Workspace struct {
-	Path     string
-	ReadOnly bool
+	Path      string
+	GuestPath string
+	ReadOnly  bool
 }
 
 // BlockVolume is a preformatted ext4 image attached as a virtio block device.
