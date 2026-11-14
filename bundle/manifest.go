@@ -121,7 +121,7 @@ func Verify(root string, options Options) (manifest Manifest, resultErr error) {
 }
 
 func openBundleRoot(root string) (*os.Root, error) {
-	info, err := os.Lstat(root)
+	info, err := captureBundleRootIdentity(root)
 	if err != nil {
 		return nil, fmt.Errorf("inspect bundle root: %w", err)
 	}
@@ -175,7 +175,7 @@ func createManifest(rootDir *os.Root, platform, completeness string, declaration
 		if strings.TrimSpace(item.Component) == "" {
 			return Manifest{}, errors.New("bundle component must not be empty")
 		}
-		pathKey := strings.ToLower(item.Path)
+		pathKey := foldKey(item.Path)
 		if _, ok := components[item.Component]; ok {
 			return Manifest{}, fmt.Errorf("duplicate bundle component %q", item.Component)
 		}
@@ -344,8 +344,10 @@ func consumeJSONObject(decoder *json.Decoder) error {
 		if !ok {
 			return errors.New("JSON object key is not a string")
 		}
+		originalKey := key
+		key = foldKey(key)
 		if _, ok := keys[key]; ok {
-			return fmt.Errorf("duplicate JSON object key %q", key)
+			return fmt.Errorf("duplicate JSON object key %q", originalKey)
 		}
 		keys[key] = struct{}{}
 		if err := consumeJSONValue(decoder); err != nil {
@@ -392,15 +394,16 @@ func verifyInventory(rootDir *os.Root, manifest Manifest) error {
 func validateInventoryEntries(items []FileItem) (map[string]FileItem, error) {
 	listed := make(map[string]FileItem, len(items))
 	components := make(map[string]struct{}, len(items))
+	pathKeys := make(map[string]struct{}, len(items))
 	for _, item := range items {
-		if err := addInventoryEntry(listed, components, item); err != nil {
+		if err := addInventoryEntry(listed, components, pathKeys, item); err != nil {
 			return nil, err
 		}
 	}
 	return listed, nil
 }
 
-func addInventoryEntry(listed map[string]FileItem, components map[string]struct{}, item FileItem) error {
+func addInventoryEntry(listed map[string]FileItem, components, pathKeys map[string]struct{}, item FileItem) error {
 	if err := validateItemPath(item.Path); err != nil {
 		return err
 	}
@@ -413,10 +416,11 @@ func addInventoryEntry(listed map[string]FileItem, components map[string]struct{
 	if err := validateDigest(item); err != nil {
 		return err
 	}
-	if err := validateUniqueBundlePath(listed, item.Path); err != nil {
+	if err := validateUniqueBundlePath(pathKeys, item.Path); err != nil {
 		return err
 	}
 	components[item.Component] = struct{}{}
+	pathKeys[foldKey(item.Path)] = struct{}{}
 	listed[item.Path] = item
 	return nil
 }
@@ -434,22 +438,22 @@ func validateDigest(item FileItem) error {
 	return nil
 }
 
-func validateUniqueBundlePath(listed map[string]FileItem, name string) error {
-	if _, ok := listed[name]; ok {
-		return fmt.Errorf("duplicate bundle path %q", name)
-	}
-	for existing := range listed {
-		if strings.EqualFold(existing, name) {
-			return fmt.Errorf("case-insensitive duplicate bundle path %q", name)
-		}
+func validateUniqueBundlePath(pathKeys map[string]struct{}, name string) error {
+	if _, ok := pathKeys[foldKey(name)]; ok {
+		return fmt.Errorf("case-insensitive duplicate bundle path %q", name)
 	}
 	return nil
 }
 
 func validateParentDirectories(rootDir *os.Root, listed map[string]FileItem) error {
+	checked := make(map[string]struct{})
 	for name := range listed {
 		current := path.Dir(name)
 		for current != "." {
+			if _, ok := checked[current]; ok {
+				current = path.Dir(current)
+				continue
+			}
 			info, err := rootDir.Lstat(filepath.FromSlash(current))
 			if err != nil {
 				return fmt.Errorf("inspect bundle directory %q: %w", current, err)
@@ -457,6 +461,7 @@ func validateParentDirectories(rootDir *os.Root, listed map[string]FileItem) err
 			if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("bundle path component %q is not a real directory", current)
 			}
+			checked[current] = struct{}{}
 			current = path.Dir(current)
 		}
 	}
@@ -465,6 +470,7 @@ func validateParentDirectories(rootDir *os.Root, listed map[string]FileItem) err
 
 func scanBundleInventory(rootDir *os.Root, listed map[string]FileItem) (map[string]struct{}, error) {
 	seen := make(map[string]struct{}, len(listed)+1)
+	directories := listedDirectoryIndex(listed)
 	seen[ManifestName] = struct{}{}
 	err := fs.WalkDir(rootDir.FS(), ".", func(relative string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -477,7 +483,7 @@ func scanBundleInventory(rootDir *os.Root, listed map[string]FileItem) (map[stri
 			return fmt.Errorf("bundle contains symlink %q", relative)
 		}
 		if entry.IsDir() {
-			if !hasListedDescendant(relative, listed) {
+			if _, ok := directories[relative]; !ok {
 				return fmt.Errorf("bundle contains undeclared directory %q", relative)
 			}
 			return nil
@@ -552,14 +558,4 @@ func validateItemPath(name string) error {
 
 func validPlatform(platform string) bool {
 	return platform == "darwin/arm64" || platform == "linux/arm64"
-}
-
-func hasListedDescendant(directory string, listed map[string]FileItem) bool {
-	prefix := directory + "/"
-	for name := range listed {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
-	}
-	return false
 }
