@@ -34,10 +34,13 @@ type Port struct {
 	HostIP   string
 }
 
-// Workspace is a host path mounted at the same absolute path in the guest.
+// Workspace describes a host path mounted into the guest. GuestPath may
+// select a different absolute destination; when empty, Path is used for both
+// the host source and guest destination.
 type Workspace struct {
-	Path     string
-	ReadOnly bool
+	Path      string
+	GuestPath string
+	ReadOnly  bool
 }
 
 // BlockVolume is a preformatted ext4 image attached as a virtio block device.
@@ -101,6 +104,13 @@ type Network interface {
 	UpdatePolicy(ctx context.Context, sandbox string, ports []Port, allow, deny []Rule, revision int) error
 	UpdatePorts(ctx context.Context, sandbox string, ports []Port) error
 	Stop(ctx context.Context, sandbox string) error
+}
+
+// GitDaemonForwarder is an optional network capability for the private clone
+// workflow. Enabling returns the verified host-loopback port; disabling
+// withdraws only the forward owned for this sandbox and returns zero.
+type GitDaemonForwarder interface {
+	SetGitDaemon(ctx context.Context, sandbox string, enabled bool) (uint16, error)
 }
 
 // PolicyUpdater is implemented by runtimes that can replace a live egress policy.

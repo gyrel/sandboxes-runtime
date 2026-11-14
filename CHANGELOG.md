@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Extend the pinned gvproxy patch with a dedicated Git upload-pack forward
+  endpoint. It keeps the allocated listener bound to IPv4 loopback and reports
+  its actual port; generic forward requests cannot request port zero.
+
+### Security and limitations
+
+- Patch application and upstream package tests passed against the pinned
+  gvisor-tap-vsock commit. Live VM and host Git remote lifecycle remain open.
+
 ## v0.0.30 — 2026-11-10
 
 ### Added

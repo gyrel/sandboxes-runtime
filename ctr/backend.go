@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -112,6 +113,10 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if image == "" {
 		image = b.image
 	}
+	workspaceMounts, err := workspaceMounts(cfg)
+	if err != nil {
+		return runtime.Handle{}, err
+	}
 	fifoDir := cfg.FIFODir
 	if fifoDir == "" {
 		fifoDir = b.fifoDir
@@ -152,13 +157,7 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	for _, volume := range cfg.BlockVolumes {
 		spec.Mounts = append(spec.Mounts, Mount{Type: "ext4", Source: volume.Source, Destination: volume.Destination})
 	}
-	workspaces := cfg.Workspaces
-	if len(workspaces) == 0 && cfg.Workspace != "" {
-		workspaces = []runtime.Workspace{{Path: cfg.Workspace}}
-	}
-	for _, workspace := range workspaces {
-		spec.Mounts = append(spec.Mounts, Mount{Source: workspace.Path, Destination: workspace.Path, ReadOnly: workspace.ReadOnly})
-	}
+	spec.Mounts = append(spec.Mounts, workspaceMounts...)
 	if err := b.client.Run(ctx, spec); err != nil {
 		cleanupErr := b.cleanupFailedCreate(ctx, id)
 		if b.network != nil {
@@ -167,6 +166,62 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 		return runtime.Handle{}, errors.Join(err, cleanupErr)
 	}
 	return runtime.Handle{ID: id, FIFODir: fifoDir}, nil
+}
+
+func workspaceMounts(cfg *runtime.Config) ([]Mount, error) {
+	workspaces := cfg.Workspaces
+	if len(workspaces) == 0 && cfg.Workspace != "" {
+		workspaces = []runtime.Workspace{{Path: cfg.Workspace}}
+	}
+
+	mounts := make([]Mount, 0, len(workspaces))
+	seen := make(map[string]struct{}, len(workspaces))
+	for _, workspace := range workspaces {
+		destination := workspace.GuestPath
+		if destination == "" {
+			destination = workspace.Path
+		}
+		if err := validateGuestWorkspacePath(destination); err != nil {
+			return nil, fmt.Errorf("invalid workspace guest path: %w", err)
+		}
+		if _, exists := seen[destination]; exists {
+			return nil, fmt.Errorf("duplicate workspace guest path %q", destination)
+		}
+		seen[destination] = struct{}{}
+		mounts = append(mounts, Mount{Source: workspace.Path, Destination: destination, ReadOnly: workspace.ReadOnly})
+	}
+
+	// Workspace mounts must not shadow fixed runtime mounts. This is especially
+	// important for the guest proxy helper, which must remain the trusted binary
+	// mounted by the runtime.
+	reserved := make([]string, 0, len(cfg.BlockVolumes)+1)
+	for _, volume := range cfg.BlockVolumes {
+		if volume.Destination != "" {
+			reserved = append(reserved, volume.Destination)
+		}
+	}
+	if cfg.ProxyHelperPath != "" {
+		reserved = append(reserved, "/tmp/rheic-proxy-helper")
+	}
+	for _, mount := range mounts {
+		for _, destination := range reserved {
+			if mountPathsOverlap(mount.Destination, destination) {
+				return nil, fmt.Errorf("workspace guest path %q overlaps runtime mount %q", mount.Destination, destination)
+			}
+		}
+	}
+	return mounts, nil
+}
+
+func validateGuestWorkspacePath(destination string) error {
+	if !path.IsAbs(destination) || path.Clean(destination) != destination || strings.ContainsAny(destination, ",=\x00\r\n") {
+		return fmt.Errorf("%q must be a clean absolute guest path without mount delimiters or control characters", destination)
+	}
+	return nil
+}
+
+func mountPathsOverlap(first, second string) bool {
+	return first == second || strings.HasPrefix(first, second+"/") || strings.HasPrefix(second, first+"/")
 }
 
 func applyProxyConfig(spec *RunSpec, cfg *runtime.Config, routes []proxyRoute) error {
@@ -364,6 +419,19 @@ func (b *Backend) UpdatePorts(ctx context.Context, h runtime.Handle, ports []run
 		return errors.New("runtime has no network port engine")
 	}
 	return b.network.UpdatePorts(ctx, strings.TrimPrefix(h.ID, "rheic-"), ports)
+}
+
+// SetGitDaemon delegates the optional clone-mode forward capability to the
+// configured network implementation. Unsupported networks fail closed.
+func (b *Backend) SetGitDaemon(ctx context.Context, sandbox string, enabled bool) (uint16, error) {
+	if b.network == nil {
+		return 0, errors.New("runtime has no Git daemon forwarding capability")
+	}
+	forwarder, ok := b.network.(runtime.GitDaemonForwarder)
+	if !ok {
+		return 0, errors.New("runtime network does not support Git daemon forwarding")
+	}
+	return forwarder.SetGitDaemon(ctx, sandbox, enabled)
 }
 
 func (b *Backend) Stop(ctx context.Context, h runtime.Handle, grace time.Duration) error {

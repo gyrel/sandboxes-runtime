@@ -14367,3 +14367,230 @@ index ad2e3d3..9ed48df 100644
  gvisor.dev/gvisor/pkg/tcpip/ports
  gvisor.dev/gvisor/pkg/tcpip/seqnum
  gvisor.dev/gvisor/pkg/tcpip/stack
+diff --git a/pkg/services/forwarder/ports.go b/pkg/services/forwarder/ports.go
+index 9911c8a..54dffb7 100644
+--- a/pkg/services/forwarder/ports.go
++++ b/pkg/services/forwarder/ports.go
+@@ -123,6 +123,15 @@ func (f *PortsForwarder) validateRemote(remote string) error {
+ }
+ 
+ func (f *PortsForwarder) Expose(protocol types.TransportProtocol, local, remote string) error {
++	if protocol == types.TCP || protocol == types.UDP {
++		_, port, err := net.SplitHostPort(local)
++		if err != nil {
++			return err
++		}
++		if port == "0" {
++			return errors.New("ephemeral host ports are reserved for the Git daemon forward")
++		}
++	}
+ 	f.proxiesLock.Lock()
+ 	defer f.proxiesLock.Unlock()
+ 
+@@ -333,6 +342,65 @@ func (f *PortsForwarder) Expose(protocol types.TransportProtocol, local, remote
+ 	return nil
+ }
+ 
++// ExposeGitDaemon binds a new listener on IPv4 loopback and forwards only to
++// the fixed guest Git daemon endpoint. The listener remains owned by gvproxy
++// until Unexpose is called with the returned Local address.
++func (f *PortsForwarder) ExposeGitDaemon() (proxy, error) {
++	const (
++		requestedLocal = "127.0.0.1:0"
++		remote         = "192.168.127.3:9418"
++	)
++	f.proxiesLock.Lock()
++	defer f.proxiesLock.Unlock()
++	for _, existing := range f.proxies {
++		if existing.Protocol == string(types.TCP) && existing.Remote == remote {
++			return proxy{}, errors.New("Git daemon forward already exists")
++		}
++	}
++	address, networkProtocol, err := f.remoteAddress(remote)
++	if err != nil {
++		return proxy{}, err
++	}
++	actualLocal := ""
++	var p tcpproxy.Proxy
++	p.ListenFunc = func(network, listenAddress string) (net.Listener, error) {
++		listener, err := net.Listen(network, listenAddress)
++		if err != nil {
++			return nil, err
++		}
++		tcpAddress, ok := listener.Addr().(*net.TCPAddr)
++		if !ok || !tcpAddress.IP.Equal(net.IPv4(127, 0, 0, 1)) || tcpAddress.Port <= 0 || tcpAddress.Port > 65535 {
++			_ = listener.Close()
++			return nil, errors.New("Git daemon listener did not bind IPv4 loopback on an assigned port")
++		}
++		actualLocal = net.JoinHostPort("127.0.0.1", strconv.Itoa(tcpAddress.Port))
++		return listener, nil
++	}
++	p.AddRoute(requestedLocal, &tcpproxy.DialProxy{
++		Addr: remote,
++		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
++			var bindAddress tcpip.FullAddress
++			if source, ok := ctx.Value(tcpproxy.SourceAddrContextKey).(*net.TCPAddr); ok {
++				if bind := sourceBindAddr(source.IP, source.Port); bind != nil {
++					bindAddress = *bind
++				}
++			}
++			return gonet.DialTCPWithBind(ctx, f.stack, bindAddress, address, networkProtocol)
++		},
++	})
++	if err := p.Start(); err != nil {
++		return proxy{}, err
++	}
++	go func() {
++		if err := p.Wait(); err != nil {
++			log.Error(err)
++		}
++	}()
++	entry := proxy{Protocol: string(types.TCP), Local: actualLocal, Remote: remote, underlying: &p}
++	f.proxies[key(types.TCP, actualLocal)] = entry
++	return entry, nil
++}
++
+ func key(protocol types.TransportProtocol, local string) ProxyKey {
+ 	return ProxyKey(fmt.Sprintf("%s/%s", protocol, local))
+ }
+@@ -418,6 +486,26 @@ func (f *PortsForwarder) Mux() http.Handler {
+ 		}
+ 		w.WriteHeader(http.StatusOK)
+ 	})
++	mux.HandleFunc("/expose-git-daemon", func(w http.ResponseWriter, r *http.Request) {
++		if r.Method != http.MethodPost {
++			http.Error(w, "post only", http.StatusMethodNotAllowed)
++			return
++		}
++		entry, err := f.ExposeGitDaemon()
++		if err != nil {
++			http.Error(w, "Git daemon forward rejected", http.StatusConflict)
++			return
++		}
++		w.Header().Set("Content-Type", "application/json")
++		if err := json.NewEncoder(w).Encode(struct {
++			Local    string `json:"local"`
++			Remote   string `json:"remote"`
++			Protocol string `json:"protocol"`
++		}{Local: entry.Local, Remote: entry.Remote, Protocol: entry.Protocol}); err != nil {
++			_ = f.Unexpose(types.TCP, entry.Local)
++			apilog.SetError(r, err)
++		}
++	})
+ 	mux.HandleFunc("/unexpose", func(w http.ResponseWriter, r *http.Request) {
+ 		if r.Method != http.MethodPost {
+ 			http.Error(w, "post only", http.StatusBadRequest)
+diff --git a/pkg/services/forwarder/ports_test.go b/pkg/services/forwarder/ports_test.go
+index b926df9..93405d7 100644
+--- a/pkg/services/forwarder/ports_test.go
++++ b/pkg/services/forwarder/ports_test.go
+@@ -1,9 +1,11 @@
+ package forwarder
+ 
+ import (
++	"encoding/json"
+ 	"fmt"
+ 	"io"
+ 	"net"
++	"net/http/httptest"
+ 	"testing"
+ 	"time"
+ 
+@@ -151,6 +153,40 @@ var _ = ginkgo.Describe("source IP propagation", func() {
+ })
+ 
+ var _ = ginkgo.Describe("port forwarding", func() {
++	ginkgo.It("reports and holds the actual loopback Git daemon address", func() {
++		fw := NewPortsForwarder(newTestStack())
++		defer func() { _ = fw.Close() }()
++
++		request := httptest.NewRequest("POST", "/expose-git-daemon", nil)
++		response := httptest.NewRecorder()
++		fw.Mux().ServeHTTP(response, request)
++		gomega.Expect(response.Code).To(gomega.Equal(200))
++
++		var forward struct {
++			Local    string `json:"local"`
++			Remote   string `json:"remote"`
++			Protocol string `json:"protocol"`
++		}
++		gomega.Expect(json.Unmarshal(response.Body.Bytes(), &forward)).To(gomega.Succeed())
++		gomega.Expect(forward.Remote).To(gomega.Equal("192.168.127.3:9418"))
++		gomega.Expect(forward.Protocol).To(gomega.Equal("tcp"))
++		host, portText, err := net.SplitHostPort(forward.Local)
++		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
++		gomega.Expect(host).To(gomega.Equal("127.0.0.1"))
++		port, err := net.LookupPort("tcp", portText)
++		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
++		gomega.Expect(port).Should(gomega.BeNumerically(">", 0))
++		_, err = net.Listen("tcp", forward.Local)
++		gomega.Expect(err).Should(gomega.HaveOccurred())
++		gomega.Expect(fw.Unexpose(types.TCP, forward.Local)).Should(gomega.Succeed())
++	})
++
++	ginkgo.It("reserves ephemeral ports for the Git daemon endpoint", func() {
++		fw := NewPortsForwarder(newTestStack())
++		gomega.Expect(fw.Expose(types.TCP, "127.0.0.1:0", "192.168.127.3:8080")).Should(gomega.HaveOccurred())
++		gomega.Expect(fw.Expose(types.UDP, "127.0.0.1:0", "192.168.127.3:8080")).Should(gomega.HaveOccurred())
++	})
++
+ 	ginkgo.It("should preserve the client source IP for TCP", func() {
+ 		ip := hostIP()
+ 		if ip == nil {
+diff --git a/pkg/virtualnetwork/gateway_mux_git_test.go b/pkg/virtualnetwork/gateway_mux_git_test.go
+new file mode 100644
+index 0000000..d149261
+--- /dev/null
++++ b/pkg/virtualnetwork/gateway_mux_git_test.go
+@@ -0,0 +1,39 @@
++package virtualnetwork
++
++import (
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	"github.com/containers/gvisor-tap-vsock/pkg/services/forwarder"
++)
++
++func TestGatewayMuxGitDaemonRouteIsAuthenticatedAndNarrow(t *testing.T) {
++	forwarderMux := forwarder.NewPortsForwarder(nil).Mux()
++	servicesMux := http.NewServeMux()
++	servicesMux.Handle("/forwarder/", http.StripPrefix("/forwarder", forwarderMux))
++	network := &VirtualNetwork{servicesMux: servicesMux, apiToken: "fixture-token"}
++	mux := network.GatewayMux()
++
++	unauthorized := httptest.NewRecorder()
++	mux.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/services/forwarder/expose-git-daemon", nil))
++	if unauthorized.Code != http.StatusUnauthorized {
++		t.Fatalf("unauthenticated Git route status = %d, want %d", unauthorized.Code, http.StatusUnauthorized)
++	}
++
++	authorizedRequest := httptest.NewRequest(http.MethodGet, "/services/forwarder/expose-git-daemon", nil)
++	authorizedRequest.Header.Set("Authorization", "Bearer fixture-token")
++	authorized := httptest.NewRecorder()
++	mux.ServeHTTP(authorized, authorizedRequest)
++	if authorized.Code != http.StatusMethodNotAllowed {
++		t.Fatalf("authenticated Git route status = %d, want %d", authorized.Code, http.StatusMethodNotAllowed)
++	}
++
++	unrelatedRequest := httptest.NewRequest(http.MethodGet, "/services/forwarder/unrelated", nil)
++	unrelatedRequest.Header.Set("Authorization", "Bearer fixture-token")
++	unrelated := httptest.NewRecorder()
++	mux.ServeHTTP(unrelated, unrelatedRequest)
++	if unrelated.Code != http.StatusNotFound {
++		t.Fatalf("unrelated route status = %d, want %d", unrelated.Code, http.StatusNotFound)
++	}
++}
+diff --git a/pkg/virtualnetwork/mux.go b/pkg/virtualnetwork/mux.go
+index bc83b32..8d49f73 100644
+--- a/pkg/virtualnetwork/mux.go
++++ b/pkg/virtualnetwork/mux.go
+@@ -157,6 +157,7 @@ func (n *VirtualNetwork) GatewayMux() *http.ServeMux {
+ 	gatewayMux := http.NewServeMux()
+ 	gatewayMux.Handle("/services/forwarder/all", handler)
+ 	gatewayMux.Handle("/services/forwarder/expose", handler)
++	gatewayMux.Handle("/services/forwarder/expose-git-daemon", handler)
+ 	gatewayMux.Handle("/services/forwarder/unexpose", handler)
+ 
+ 	return gatewayMux

@@ -303,6 +303,98 @@ func TestBackendCreate(t *testing.T) {
 	}
 }
 
+func TestWorkspaceMountsGuestDestination(t *testing.T) {
+	tests := []struct {
+		name         string
+		workspace    runtime.Workspace
+		wantDest     string
+		wantReadOnly bool
+	}{
+		{
+			name:      "default keeps host path",
+			workspace: runtime.Workspace{Path: "/workspace"},
+			wantDest:  "/workspace",
+		},
+		{
+			name:      "explicit guest destination",
+			workspace: runtime.Workspace{Path: "/host/source", GuestPath: "/workspace/project"},
+			wantDest:  "/workspace/project",
+		},
+		{
+			name:         "read only alternate destination",
+			workspace:    runtime.Workspace{Path: "/host/source", GuestPath: "/workspace/project", ReadOnly: true},
+			wantDest:     "/workspace/project",
+			wantReadOnly: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mounts, err := workspaceMounts(&runtime.Config{Workspaces: []runtime.Workspace{tt.workspace}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(mounts) != 1 {
+				t.Fatalf("mount count = %d, want 1", len(mounts))
+			}
+			if mounts[0].Source != tt.workspace.Path || mounts[0].Destination != tt.wantDest || mounts[0].ReadOnly != tt.wantReadOnly {
+				t.Fatalf("mount = %+v", mounts[0])
+			}
+		})
+	}
+}
+
+func TestWorkspaceMountsRejectInvalidGuestDestination(t *testing.T) {
+	for _, destination := range []string{
+		"relative/path",
+		"/workspace/../escape",
+		"/workspace/./project",
+		"/workspace,src=/attacker",
+		"/workspace=bad",
+		"/workspace\x00bad",
+		"/workspace\nbad",
+		"/workspace\rbad",
+	} {
+		t.Run(fmt.Sprintf("%q", destination), func(t *testing.T) {
+			_, err := workspaceMounts(&runtime.Config{Workspaces: []runtime.Workspace{{Path: "/host", GuestPath: destination}}})
+			if err == nil {
+				t.Fatalf("workspaceMounts accepted destination %q", destination)
+			}
+		})
+	}
+}
+
+func TestWorkspaceMountsRejectDuplicateGuestDestination(t *testing.T) {
+	_, err := workspaceMounts(&runtime.Config{Workspaces: []runtime.Workspace{
+		{Path: "/host/one", GuestPath: "/workspace"},
+		{Path: "/host/two", GuestPath: "/workspace"},
+	}})
+	if err == nil {
+		t.Fatal("workspaceMounts accepted duplicate guest destinations")
+	}
+}
+
+func TestBackendCreateUsesGuestWorkspaceDestination(t *testing.T) {
+	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
+		return nil, nil
+	}}
+	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22"}
+	_, err := backend.Create(context.Background(), runtime.Config{
+		Name: "dev",
+		Workspaces: []runtime.Workspace{{
+			Path:      "/host/source",
+			GuestPath: "/workspace/project",
+			ReadOnly:  true,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Join(runner.calls[len(runner.calls)-1], " ")
+	if want := "type=bind,src=/host/source,dst=/workspace/project,options=rbind:ro"; !strings.Contains(args, want) {
+		t.Fatalf("missing guest workspace mount %q in %q", want, args)
+	}
+}
+
 func TestCapabilitiesFailClosed(t *testing.T) {
 	backend := &Backend{}
 	caps, err := backend.Capabilities(context.Background())
@@ -349,6 +441,44 @@ func (f *fakeNetwork) Stop(ctx context.Context, _ string) error {
 	f.stopped++
 	f.stopCtxErr = ctx.Err()
 	return f.stopErr
+}
+
+type gitForwarderNetwork struct {
+	fakeNetwork
+	sandbox string
+	enabled bool
+	port    uint16
+	err     error
+}
+
+func (f *gitForwarderNetwork) SetGitDaemon(_ context.Context, sandbox string, enabled bool) (uint16, error) {
+	f.sandbox = sandbox
+	f.enabled = enabled
+	if !enabled {
+		return 0, f.err
+	}
+	return f.port, f.err
+}
+
+func TestBackendSetGitDaemonRequiresAndDelegatesCapability(t *testing.T) {
+	backend := &Backend{}
+	if _, err := backend.SetGitDaemon(context.Background(), "dev", true); err == nil {
+		t.Fatal("SetGitDaemon succeeded without a network")
+	}
+	backend.network = &fakeNetwork{}
+	if _, err := backend.SetGitDaemon(context.Background(), "dev", true); err == nil {
+		t.Fatal("SetGitDaemon succeeded without the optional network capability")
+	}
+
+	forwarder := &gitForwarderNetwork{port: 49152}
+	backend.network = forwarder
+	port, err := backend.SetGitDaemon(context.Background(), "dev", true)
+	if err != nil || port != 49152 || forwarder.sandbox != "dev" || !forwarder.enabled {
+		t.Fatalf("enable Git daemon = %d, %v; forwarder=%+v", port, err, forwarder)
+	}
+	if port, err = backend.SetGitDaemon(context.Background(), "dev", false); err != nil || port != 0 || forwarder.enabled {
+		t.Fatalf("disable Git daemon = %d, %v; forwarder=%+v", port, err, forwarder)
+	}
 }
 
 func TestCreateReportsNetworkCleanupFailure(t *testing.T) {
