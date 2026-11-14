@@ -106,6 +106,13 @@ type Network interface {
 	Stop(ctx context.Context, sandbox string) error
 }
 
+// GitDaemonForwarder is an optional network capability for the private clone
+// workflow. Enabling returns the verified host-loopback port; disabling
+// withdraws only the forward owned for this sandbox and returns zero.
+type GitDaemonForwarder interface {
+	SetGitDaemon(ctx context.Context, sandbox string, enabled bool) (uint16, error)
+}
+
 // PolicyUpdater is implemented by runtimes that can replace a live egress policy.
 type PolicyUpdater interface {
 	UpdatePolicy(ctx context.Context, handle Handle, allow, deny []Rule, revision int) error

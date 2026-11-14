@@ -421,6 +421,19 @@ func (b *Backend) UpdatePorts(ctx context.Context, h runtime.Handle, ports []run
 	return b.network.UpdatePorts(ctx, strings.TrimPrefix(h.ID, "rheic-"), ports)
 }
 
+// SetGitDaemon delegates the optional clone-mode forward capability to the
+// configured network implementation. Unsupported networks fail closed.
+func (b *Backend) SetGitDaemon(ctx context.Context, sandbox string, enabled bool) (uint16, error) {
+	if b.network == nil {
+		return 0, errors.New("runtime has no Git daemon forwarding capability")
+	}
+	forwarder, ok := b.network.(runtime.GitDaemonForwarder)
+	if !ok {
+		return 0, errors.New("runtime network does not support Git daemon forwarding")
+	}
+	return forwarder.SetGitDaemon(ctx, sandbox, enabled)
+}
+
 func (b *Backend) Stop(ctx context.Context, h runtime.Handle, grace time.Duration) error {
 	if grace <= 0 {
 		grace = 5 * time.Second

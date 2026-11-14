@@ -443,6 +443,44 @@ func (f *fakeNetwork) Stop(ctx context.Context, _ string) error {
 	return f.stopErr
 }
 
+type gitForwarderNetwork struct {
+	fakeNetwork
+	sandbox string
+	enabled bool
+	port    uint16
+	err     error
+}
+
+func (f *gitForwarderNetwork) SetGitDaemon(_ context.Context, sandbox string, enabled bool) (uint16, error) {
+	f.sandbox = sandbox
+	f.enabled = enabled
+	if !enabled {
+		return 0, f.err
+	}
+	return f.port, f.err
+}
+
+func TestBackendSetGitDaemonRequiresAndDelegatesCapability(t *testing.T) {
+	backend := &Backend{}
+	if _, err := backend.SetGitDaemon(context.Background(), "dev", true); err == nil {
+		t.Fatal("SetGitDaemon succeeded without a network")
+	}
+	backend.network = &fakeNetwork{}
+	if _, err := backend.SetGitDaemon(context.Background(), "dev", true); err == nil {
+		t.Fatal("SetGitDaemon succeeded without the optional network capability")
+	}
+
+	forwarder := &gitForwarderNetwork{port: 49152}
+	backend.network = forwarder
+	port, err := backend.SetGitDaemon(context.Background(), "dev", true)
+	if err != nil || port != 49152 || forwarder.sandbox != "dev" || !forwarder.enabled {
+		t.Fatalf("enable Git daemon = %d, %v; forwarder=%+v", port, err, forwarder)
+	}
+	if port, err = backend.SetGitDaemon(context.Background(), "dev", false); err != nil || port != 0 || forwarder.enabled {
+		t.Fatalf("disable Git daemon = %d, %v; forwarder=%+v", port, err, forwarder)
+	}
+}
+
 func TestCreateReportsNetworkCleanupFailure(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
