@@ -201,8 +201,8 @@ func (c *Client) Run(ctx context.Context, spec RunSpec) error {
 		args = append(args, "--annotation", annotation)
 	}
 	for _, mount := range spec.Mounts {
-		if !validMountSource(mount.Source) {
-			return errors.New("mount source must not be empty or contain mount delimiters or control characters")
+		if err := validateMount(mount); err != nil {
+			return err
 		}
 		args = append(args, "--mount", mountSpec(mount))
 	}
@@ -223,7 +223,20 @@ func (c *Client) Run(ctx context.Context, spec RunSpec) error {
 }
 
 func validMountSource(source string) bool {
-	return source != "" && !strings.ContainsAny(source, ",=\x00\r\n")
+	return source != "" && !strings.ContainsAny(source, ",=\"\x00\r\n")
+}
+
+func validateMount(mount Mount) error {
+	if !validMountSource(mount.Source) {
+		return errors.New("mount source must not be empty or contain mount delimiters or control characters")
+	}
+	if mount.Type != "" && mount.Type != "bind" && (mount.ReadOnly || mount.RecursiveReadOnly) {
+		return errors.New("read-only non-bind mounts are not supported")
+	}
+	if mount.RecursiveReadOnly && !mount.ReadOnly {
+		return errors.New("recursive read-only requires a read-only mount")
+	}
+	return nil
 }
 
 // recursiveReadOnlyError makes a rejected rro option actionable. The pinned

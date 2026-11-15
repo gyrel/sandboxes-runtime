@@ -402,7 +402,7 @@ func TestWorkspaceMountsRejectInvalidGuestDestination(t *testing.T) {
 }
 
 func TestWorkspaceMountsRejectUnsafeHostSource(t *testing.T) {
-	for _, source := range []string{"", "/work,src=/etc", "/work=other", "/work\x00bad", "/work\nbad", "/work\rbad"} {
+	for _, source := range []string{"", "/work,src=/etc", "/work=other", "/work\"bad", "/work\x00bad", "/work\nbad", "/work\rbad"} {
 		t.Run(fmt.Sprintf("%q", source), func(t *testing.T) {
 			_, err := workspaceMounts(&runtime.Config{Workspaces: []runtime.Workspace{{Path: source, GuestPath: "/workspace"}}})
 			if err == nil {
@@ -427,6 +427,27 @@ func TestRunRejectsUnsafeMountSource(t *testing.T) {
 	}
 	if len(runner.calls) != 0 {
 		t.Fatal("Run invoked ctr for an invalid mount")
+	}
+}
+
+func TestRunRejectsUnsupportedReadOnlyMounts(t *testing.T) {
+	for _, mount := range []Mount{
+		{Type: "ext4", Source: "/volume", Destination: "/data", ReadOnly: true},
+		{Type: "ext4", Source: "/volume", Destination: "/data", RecursiveReadOnly: true},
+		{Type: "bind", Source: "/workspace", Destination: "/workspace", RecursiveReadOnly: true},
+	} {
+		runner := &fakeRunner{}
+		client := newTestClient(t, runner)
+		err := client.Run(context.Background(), RunSpec{ContainerID: "test", Image: "alpine", Mounts: []Mount{mount}})
+		if err == nil || len(runner.calls) != 0 {
+			t.Fatalf("Run accepted mount %+v or invoked ctr: err=%v calls=%v", mount, err, runner.calls)
+		}
+	}
+	runner := &fakeRunner{}
+	client := newTestClient(t, runner)
+	err := client.Run(context.Background(), RunSpec{ContainerID: "test", Image: "alpine", Mounts: []Mount{{Type: "ext4", Source: "/volume", Destination: "/data"}}})
+	if err != nil || len(runner.calls) != 1 {
+		t.Fatalf("valid writable volume rejected: err=%v calls=%v", err, runner.calls)
 	}
 }
 
