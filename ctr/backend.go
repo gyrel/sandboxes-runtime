@@ -223,6 +223,11 @@ func workspaceMounts(cfg *runtime.Config) ([]Mount, error) {
 	mounts := make([]Mount, 0, len(workspaces))
 	seen := make(map[string]struct{}, len(workspaces))
 	for _, workspace := range workspaces {
+		// ctr parses --mount as a comma-delimited key/value string. Never let
+		// a host path add mount fields or smuggle control characters into it.
+		if !validMountSource(workspace.Path) {
+			return nil, errors.New("workspace source must not be empty or contain mount delimiters or control characters")
+		}
 		destination := workspace.GuestPath
 		if destination == "" {
 			destination = workspace.Path
@@ -254,14 +259,21 @@ func workspaceMounts(cfg *runtime.Config) ([]Mount, error) {
 	if cfg.ProxyHelperPath != "" {
 		reserved = append(reserved, "/tmp/rheic-proxy-helper")
 	}
+	if err := validateReservedMounts(mounts, reserved); err != nil {
+		return nil, err
+	}
+	return mounts, nil
+}
+
+func validateReservedMounts(mounts []Mount, reserved []string) error {
 	for _, mount := range mounts {
 		for _, destination := range reserved {
 			if mountPathsOverlap(mount.Destination, destination) {
-				return nil, fmt.Errorf("workspace guest path %q overlaps runtime mount %q", mount.Destination, destination)
+				return fmt.Errorf("workspace guest path %q overlaps runtime mount %q", mount.Destination, destination)
 			}
 		}
 	}
-	return mounts, nil
+	return nil
 }
 
 func validateGuestWorkspacePath(destination string) error {
