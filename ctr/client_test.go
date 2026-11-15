@@ -401,6 +401,35 @@ func TestWorkspaceMountsRejectInvalidGuestDestination(t *testing.T) {
 	}
 }
 
+func TestWorkspaceMountsRejectUnsafeHostSource(t *testing.T) {
+	for _, source := range []string{"", "/work,src=/etc", "/work=other", "/work\x00bad", "/work\nbad", "/work\rbad"} {
+		t.Run(fmt.Sprintf("%q", source), func(t *testing.T) {
+			_, err := workspaceMounts(&runtime.Config{Workspaces: []runtime.Workspace{{Path: source, GuestPath: "/workspace"}}})
+			if err == nil {
+				t.Fatalf("workspaceMounts accepted unsafe source %q", source)
+			}
+		})
+	}
+	mounts, err := workspaceMounts(&runtime.Config{Workspaces: []runtime.Workspace{{Path: "/work/valid path", GuestPath: "/workspace"}}})
+	if err != nil || len(mounts) != 1 || mounts[0].Source != "/work/valid path" {
+		t.Fatalf("valid source rejected: mounts=%v err=%v", mounts, err)
+	}
+}
+
+func TestRunRejectsUnsafeMountSource(t *testing.T) {
+	runner := &fakeRunner{}
+	client := newTestClient(t, runner)
+	err := client.Run(context.Background(), RunSpec{
+		ContainerID: "test", Image: "alpine", Mounts: []Mount{{Type: "ext4", Source: "/volume,src=/etc", Destination: "/data"}},
+	})
+	if err == nil {
+		t.Fatal("Run accepted an injected mount source")
+	}
+	if len(runner.calls) != 0 {
+		t.Fatal("Run invoked ctr for an invalid mount")
+	}
+}
+
 func TestWorkspaceMountsRejectDuplicateGuestDestination(t *testing.T) {
 	_, err := workspaceMounts(&runtime.Config{Workspaces: []runtime.Workspace{
 		{Path: "/host/one", GuestPath: "/workspace"},

@@ -3,6 +3,7 @@ package ctr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -200,6 +201,9 @@ func (c *Client) Run(ctx context.Context, spec RunSpec) error {
 		args = append(args, "--annotation", annotation)
 	}
 	for _, mount := range spec.Mounts {
+		if !validMountSource(mount.Source) {
+			return errors.New("mount source must not be empty or contain mount delimiters or control characters")
+		}
 		args = append(args, "--mount", mountSpec(mount))
 	}
 	for _, env := range spec.Env {
@@ -216,6 +220,10 @@ func (c *Client) Run(ctx context.Context, spec RunSpec) error {
 		return recursiveReadOnlyError(spec.Mounts, err)
 	}
 	return nil
+}
+
+func validMountSource(source string) bool {
+	return source != "" && !strings.ContainsAny(source, ",=\x00\r\n")
 }
 
 // recursiveReadOnlyError makes a rejected rro option actionable. The pinned
