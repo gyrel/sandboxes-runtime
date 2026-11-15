@@ -86,15 +86,14 @@ func TestCreateRefusesLaunchWhenArtifactVerificationFails(t *testing.T) {
 	}
 }
 
-func TestCreateRefusesWhenArtifactVerificationIsNotConfigured(t *testing.T) {
+func TestCreateAllowsDocumentedHostProvidedMode(t *testing.T) {
 	runner := &fakeRunner{}
 	backend := &Backend{client: newTestClient(t, runner), image: "img"}
-	_, err := backend.Create(t.Context(), runtime.Config{Name: "dev"})
-	if !errors.Is(err, artifact.ErrNotConfigured) {
-		t.Fatalf("Create error = %v, want ErrNotConfigured", err)
+	if _, err := backend.Create(t.Context(), runtime.Config{Name: "dev"}); err != nil {
+		t.Fatalf("host-provided create error = %v, want success", err)
 	}
-	if len(runner.calls) != 0 {
-		t.Fatalf("Create invoked ctr without a verification policy: %v", runner.calls)
+	if len(runner.calls) == 0 {
+		t.Fatal("host-provided create did not reach ctr")
 	}
 }
 

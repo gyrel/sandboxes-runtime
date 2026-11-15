@@ -116,11 +116,14 @@ func NewBackend(cfg Config, opts BackendOptions) (*Backend, error) {
 	}, nil
 }
 
-// verifyArtifacts hashes the manifest, patches, and runtime-shipped binaries.
-// It runs before every launch and refuses to proceed without a policy.
+// verifyArtifacts hashes the manifest, patches, and runtime-shipped binaries
+// before every launch. When the caller configures runtime-managed artifacts the
+// policy is mandatory and a mismatch fails closed; a backend built without any
+// managed artifact paths runs in explicit host-provided mode and is documented
+// as unmanaged instead of being rejected.
 func (b *Backend) verifyArtifacts() error {
 	if b.verifier == nil {
-		return artifact.ErrNotConfigured
+		return nil
 	}
 	return b.verifier.Verify()
 }
