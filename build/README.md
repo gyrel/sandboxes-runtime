@@ -43,6 +43,9 @@ tests are recorded in the plan:
   domain-only path, domain-only UDP, and domain denies overlapping a direct IP
   allow are rejected. Policy decisions, audit records, and flow tracking use
   the guest-visible destination evaluated before host NAT translation.
+  Host-loopback NAT aliases are installed only when the configuration sets
+  `hostServicesEnabled: true` or the policy has an exact-host allow for the
+  alias; a broad covering CIDR such as `0.0.0.0/0` does not enable them.
   Candidate IPv6 support (`stack.ipv6Enabled`, guest ULA/RA, AAAA policy
   lookups, IPv6 CIDR matching, TCP SNI binding to v6 addresses, explicit
   IPv6 host-services NAT entries, and `guest-ipv6:` loopback publish targets)

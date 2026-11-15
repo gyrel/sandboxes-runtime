@@ -67,6 +67,27 @@ func TestGVProxyPatchHunkCounts(t *testing.T) {
 	}
 }
 
+func TestGVProxyPatchGatesHostServicesNAT(t *testing.T) {
+	path := filepath.Join("..", "..", "build", "patches", "gvproxy-egress-policy-v2.patch")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := string(data)
+	for _, want := range []string{
+		"HostServicesEnabled bool `yaml:\"hostServicesEnabled,omitempty\"`",
+		"func hostServicesAliasAllowed(configuration *types.Configuration, source tcpip.Address) bool",
+		"if isHostLoopback(destinationAddress) && !hostServicesAliasAllowed(configuration, sourceAddress) {",
+		"func TestParseNATTableHostServicesRequiresExplicitOptIn(t *testing.T) {",
+		"host services disabled with broad allow",
+		"TestParseNATTableBroadAllowDoesNotExposeHostLoopback",
+	} {
+		if !strings.Contains(patch, want) {
+			t.Errorf("gvproxy patch is missing host-services NAT gate %q", want)
+		}
+	}
+}
+
 func parsePatchHunkCounts(header string) (int, int, error) {
 	fields := strings.Fields(header)
 	if len(fields) < 4 {
