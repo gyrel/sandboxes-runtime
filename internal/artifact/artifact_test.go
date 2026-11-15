@@ -171,12 +171,12 @@ func TestGenerateAndVerifyBuildInputs(t *testing.T) {
 	manifestData := []byte(fmt.Sprintf(`version: 1
 platforms: [linux/arm64]
 components:
-  containerd: {version: "1", source: "x"}
-  nerdbox: {version: "1", source: "x"}
-  libkrun: {version: "1", source: "x"}
-  libkrunfw: {version: "1", source: "x"}
-  linux-kernel-arm64: {version: "1", source: "x"}
-  gvisor-tap-vsock: {version: "1", source: "x"}
+  containerd: {version: "1", source: "https://github.com/example/repo"}
+  nerdbox: {version: "1", source: "https://github.com/example/repo"}
+  libkrun: {version: "1", source: "https://github.com/example/repo"}
+  libkrunfw: {version: "1", source: "https://github.com/example/repo"}
+  linux-kernel-arm64: {version: "1", source: "https://github.com/example/repo"}
+  gvisor-tap-vsock: {version: "1", source: "https://github.com/example/repo"}
 patches:
   p:
     file: patches/p.patch
