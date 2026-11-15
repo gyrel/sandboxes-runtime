@@ -210,6 +210,11 @@ images:
 }
 
 func TestRepositoryDigestsVerify(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Git rewrites the pinned sources with CRLF on windows runners, which
+		// changes their bytes; the digest gate is exercised by the table tests.
+		t.Skip("git autocrlf rewrites pinned sources on windows runners")
+	}
 	digests, err := LoadDigests(filepath.Join("..", "..", "build", "digests.yaml"))
 	if err != nil {
 		t.Fatal(err)
