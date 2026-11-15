@@ -140,7 +140,7 @@ func TestCreateDoesNotProceedWhenContainerListFails(t *testing.T) {
 		return nil, errors.New("containerd unavailable")
 	}}
 	client := newTestClient(t, runner)
-	backend := &Backend{client: client, image: "alpine:3.22"}
+	backend := &Backend{client: client, image: "alpine:3.22", verifier: testArtifactVerifier(t)}
 	if _, err := backend.Create(context.Background(), runtime.Config{Name: "dev"}); err == nil {
 		t.Fatal("container list failure was ignored")
 	}
@@ -319,7 +319,7 @@ func TestBackendCreate(t *testing.T) {
 		return nil, nil
 	}}
 	client := newTestClient(t, runner)
-	backend := &Backend{client: client, image: "alpine:3.22", fifoDir: "/tmp/fifo"}
+	backend := &Backend{client: client, image: "alpine:3.22", fifoDir: "/tmp/fifo", verifier: testArtifactVerifier(t)}
 	handle, err := backend.Create(context.Background(), runtime.Config{
 		Name:      "dev",
 		Workspace: "/work",
@@ -415,7 +415,7 @@ func TestBackendCreateUsesGuestWorkspaceDestination(t *testing.T) {
 	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
 		return nil, nil
 	}}
-	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22"}
+	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22", verifier: testArtifactVerifier(t)}
 	_, err := backend.Create(context.Background(), runtime.Config{
 		Name: "dev",
 		Workspaces: []runtime.Workspace{{
@@ -532,7 +532,7 @@ func TestCreateReportsNetworkCleanupFailure(t *testing.T) {
 		return nil, nil
 	}}
 	network := &fakeNetwork{stopErr: cleanupErr}
-	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22", network: network}
+	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22", network: network, verifier: testArtifactVerifier(t)}
 	_, err := backend.Create(ctx, runtime.Config{Name: "dev"})
 	if !errors.Is(err, runErr) || !errors.Is(err, cleanupErr) {
 		t.Fatalf("runtime and cleanup errors not preserved: %v", err)
@@ -568,7 +568,7 @@ func TestBackendNetworkAnnotations(t *testing.T) {
 	}}
 	client := newTestClient(t, runner)
 	network := &fakeNetwork{}
-	backend := &Backend{client: client, image: "alpine:3.22", network: network}
+	backend := &Backend{client: client, image: "alpine:3.22", network: network, verifier: testArtifactVerifier(t)}
 	handle, err := backend.Create(context.Background(), runtime.Config{
 		Name: "dev", Ports: []runtime.Port{{Host: 8080, Guest: 3000, Protocol: "tcp"}},
 		Allow: []runtime.Rule{{Protocol: "tcp", CIDR: "0.0.0.0/0", Port: 80}},
@@ -619,7 +619,9 @@ func TestCreateRemovesContainerWhenRunFails(t *testing.T) {
 		}
 		return nil, nil
 	}}
-	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img"})
+	opts := testArtifactOptions(t)
+	opts.Image = "img"
+	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -746,7 +748,7 @@ func TestCreateRecursiveReadOnlyMountFailsClosed(t *testing.T) {
 		}
 		return nil, nil
 	}}
-	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22"}
+	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22", verifier: testArtifactVerifier(t)}
 	_, err := backend.Create(context.Background(), runtime.Config{
 		Name: "dev",
 		Workspaces: []runtime.Workspace{{
@@ -774,7 +776,9 @@ func TestCreateRecursiveReadOnlyMountFailsClosed(t *testing.T) {
 
 func TestCreatePassesProxyChannelAnnotation(t *testing.T) {
 	runner := &fakeRunner{}
-	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img"})
+	opts := testArtifactOptions(t)
+	opts.Image = "img"
+	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -792,7 +796,9 @@ func TestCreatePassesProxyChannelAnnotation(t *testing.T) {
 
 func TestCreateMountsAndStartsProxyHelper(t *testing.T) {
 	runner := &fakeRunner{}
-	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img"})
+	opts := testArtifactOptions(t)
+	opts.Image = "img"
+	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -821,7 +827,9 @@ func TestCreateMountsAndStartsProxyHelper(t *testing.T) {
 
 func TestCreateWithProxyRoutesStartsMultipleListeners(t *testing.T) {
 	runner := &fakeRunner{}
-	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img"})
+	opts := testArtifactOptions(t)
+	opts.Image = "img"
+	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
 	if err != nil {
 		t.Fatal(err)
 	}

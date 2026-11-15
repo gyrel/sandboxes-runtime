@@ -7,6 +7,82 @@ This directory pins the native runtime inputs used by the containerd/nerdbox
 adapter. The manifest is authoritative; the patches are checked by the
 `internal/manifest` test.
 
+## Runtime artifact digests
+
+`manifest.yaml` records build inputs. `digests.yaml` is the runtime trust
+record: the runtime hashes `manifest.yaml`, every patch file, and every
+runtime-shipped executable before it launches a sandbox. A mismatch, a missing
+file, a missing digest entry, or an unreadable artifact makes the launch fail
+closed with an error naming the artifact and the expected and actual digest.
+
+The runtime verifies the binaries it ships and launches on the host:
+
+- `containerd-shim-nerdbox-v1` from `scripts/build-nerdbox-shim.sh`
+- `gvproxy` from `scripts/build-gvproxy.sh`
+- `qemu` for the Windows WHPX backend
+
+`ctr` and the containerd daemon are intentionally unmanaged host-provided
+tools. The runtime does not hash them because their installation belongs to the
+host package manager or containerd deployment. Configure their paths and trust
+separately.
+
+The runtime never launches an artifact when no digest policy is configured.
+Supply the managed paths and digest file through the adapter configuration:
+
+```go
+backend, err := ctr.NewBackend(cfg, ctr.BackendOptions{
+    Artifacts: map[string]string{
+        "containerd-shim-nerdbox-v1": "/opt/rheic/bin/containerd-shim-nerdbox-v1",
+        "gvproxy":                    "/opt/rheic/bin/gvproxy",
+        "qemu":                       "/opt/rheic/bin/qemu-system-x86_64",
+    },
+    DigestsPath: "/opt/rheic/build/digests.yaml",
+})
+```
+
+Every configured name must have an entry in `digests.yaml`. Verification runs
+on every `Create` and `Start`, so replacing a binary after startup is refused.
+
+### Creating or updating the digest file
+
+Build and verify the artifacts first, then record their digests. Run this from
+the repository root with absolute artifact paths:
+
+```sh
+scripts/update-artifact-digests.sh \
+  containerd-shim-nerdbox-v1=/opt/rheic/bin/containerd-shim-nerdbox-v1 \
+  gvproxy=/opt/rheic/bin/gvproxy \
+  qemu=/opt/rheic/bin/qemu-system-x86_64
+```
+
+The equivalent Make target is:
+
+```sh
+make artifact-digests ARTIFACTS="containerd-shim-nerdbox-v1=/opt/rheic/bin/containerd-shim-nerdbox-v1 gvproxy=/opt/rheic/bin/gvproxy qemu=/opt/rheic/bin/qemu-system-x86_64"
+```
+
+`OUT` and `MANIFEST` select a different output and manifest path, for example
+when staging a release bundle:
+
+```sh
+OUT=/opt/rheic/build/digests.yaml MANIFEST=/opt/rheic/build/manifest.yaml \
+  scripts/update-artifact-digests.sh containerd-shim-nerdbox-v1=/opt/rheic/bin/containerd-shim-nerdbox-v1
+```
+
+The generator verifies the manifest's component pins, image digest, and patch
+digests before writing. It records:
+
+- `manifest_sha256`: SHA-256 of `manifest.yaml`;
+- `patches`: each manifest patch file and its SHA-256;
+- `artifacts`: each configured artifact name and its SHA-256.
+
+The checked-in `digests.yaml` carries the manifest patch digests and an empty
+artifact map. That is deliberate: release bundles, not the source tree, contain
+the built binaries. Run the generator against the verified release artifacts to
+produce the deployed digest file. Regenerate it whenever `manifest.yaml`, a
+patch, or an artifact changes; the `internal/artifact` test rejects a digest
+file that no longer matches the checked-in manifest or patches.
+
 ## Components
 
 - containerd `2.4.2`

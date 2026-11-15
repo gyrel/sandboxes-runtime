@@ -12,6 +12,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/rheic/sandboxes-runtime/internal/artifact"
 )
 
 func TestVerifyGuestPipeACL(t *testing.T) {
@@ -47,7 +49,11 @@ func TestRunnerReapsUnexpectedQEMUExit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner, err := NewRunner(qemuPath)
+	qemuDigest, err := artifact.DigestOfFile(qemuPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := NewRunner(qemuPath, qemuDigest.Hex())
 	if err != nil {
 		t.Fatal(err)
 	}

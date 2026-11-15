@@ -35,6 +35,19 @@ patches, and the default image digest. Validate the checked-in inputs with:
 make runtime-verify
 ```
 
+`build/digests.yaml` records the SHA-256 of the manifest, its patches, and the
+runtime-shipped shim, gvproxy, and QEMU binaries. The containerd adapter hashes
+these inputs before every `Create` and `Start` and refuses to launch on a
+missing entry, unreadable file, or digest mismatch. Host-provided `ctr` and
+containerd are intentionally unmanaged and are not hashed by this runtime.
+Regenerate the digest file after building or changing an artifact:
+
+```sh
+make artifact-digests ARTIFACTS="containerd-shim-nerdbox-v1=/path/to/shim gvproxy=/path/to/gvproxy"
+```
+
+See `build/README.md` for the full operator procedure.
+
 ## Host-services NAT exposure
 
 The IPv4 gateway address is `192.168.127.1`. The gateway can also install a
@@ -81,8 +94,10 @@ Current limits are explicit:
 `whpx.BuildArgs` builds a restricted QEMU argv for a Linux kernel/initrd/root
 disk, forces `accel=whpx`, and permits the QEMU socket-network backend to
 connect only to IPv4 loopback. `whpx.Runner` starts and tracks QEMU in
-kill-on-close Windows Job Objects. These APIs are not wired into daemon
-composition and do not implement `runtime.Backend`. Windows host support
+kill-on-close Windows Job Objects. It requires the QEMU executable's SHA-256 and
+re-verifies it before every launch; a replaced or unreadable binary is refused.
+These APIs are not wired into daemon composition and do not implement
+`runtime.Backend`. Windows host support
 remains unavailable until the project supplies and integrates owned disk/image
 lifecycle, the guest control and workspace protocols, a private gateway API/
 lease transport, and fail-closed cleanup. Do not use this low-level runtime
