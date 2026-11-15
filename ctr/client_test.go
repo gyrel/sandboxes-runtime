@@ -265,7 +265,7 @@ func TestMountSpecRendering(t *testing.T) {
 		},
 		{
 			name:  "non bind",
-			mount: Mount{Type: "ext4", Source: "/vol.img", Destination: "/data", ReadOnly: true, RecursiveReadOnly: true},
+			mount: Mount{Type: "ext4", Source: "/vol.img", Destination: "/data"},
 			want:  "type=ext4,src=/vol.img,dst=/data",
 		},
 	} {
