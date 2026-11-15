@@ -312,7 +312,7 @@ func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 	full := append([]string{"--address", c.cfg.Socket, "--namespace", c.cfg.Namespace}, args...)
 	out, err := c.runner.CombinedOutput(ctx, c.cfg.CTR, full...)
 	if err != nil {
-		return string(out), fmt.Errorf("%s %s: %w: %s", c.cfg.CTR, strings.Join(full, " "), err, strings.TrimSpace(string(out)))
+		return string(out), fmt.Errorf("%s %s: %w: %s", c.cfg.CTR, formatArgs(full), err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
 }
