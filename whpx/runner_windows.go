@@ -20,17 +20,20 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/rheic/sandboxes-runtime/internal/artifact"
 )
 
 // Runner owns QEMU processes in kill-on-close Windows Job Objects. QEMU is
 // created suspended, assigned to its job, and resumed only after assignment so
 // daemon failure cannot leave a running guest outside the owned process tree.
 type Runner struct {
-	qemuPath  string
-	mu        sync.Mutex
-	instances map[string]*instance
-	closed    bool
-	onExit    func(id string, err error)
+	qemuPath   string
+	qemuDigest artifact.Digest
+	mu         sync.Mutex
+	instances  map[string]*instance
+	closed     bool
+	onExit     func(id string, err error)
 }
 
 type instance struct {
@@ -58,10 +61,17 @@ type qemuStartParameters struct {
 	environment []uint16
 }
 
-// NewRunner creates a QEMU process owner for the configured executable.
-func NewRunner(qemuPath string) (*Runner, error) {
+// NewRunner creates a QEMU process owner for the configured executable. The
+// executable must match expectedSHA256, a 64-character hexadecimal digest with
+// an optional "sha256:" prefix. Start re-verifies the binary before every
+// launch so a post-startup replacement is refused.
+func NewRunner(qemuPath, expectedSHA256 string) (*Runner, error) {
 	if !filepath.IsAbs(qemuPath) {
 		return nil, errors.New("QEMU path must be absolute")
+	}
+	digest, err := artifact.ParseDigest(expectedSHA256)
+	if err != nil {
+		return nil, fmt.Errorf("parse QEMU digest: %w", err)
 	}
 	info, err := os.Lstat(qemuPath)
 	if err != nil {
@@ -70,7 +80,10 @@ func NewRunner(qemuPath string) (*Runner, error) {
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("QEMU executable must be a regular non-symlink file")
 	}
-	return &Runner{qemuPath: qemuPath, instances: make(map[string]*instance)}, nil
+	if err := artifact.VerifyFile("qemu", qemuPath, digest); err != nil {
+		return nil, err
+	}
+	return &Runner{qemuPath: qemuPath, qemuDigest: digest, instances: make(map[string]*instance)}, nil
 }
 
 // SetOnExit installs the callback for unexpected QEMU exits.
@@ -86,6 +99,9 @@ func (r *Runner) Start(ctx context.Context, id string, cfg StartConfig) error {
 		return errors.New("invalid WHPX instance ID")
 	}
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := artifact.VerifyFile("qemu", r.qemuPath, r.qemuDigest); err != nil {
 		return err
 	}
 	pipeName, err := newGuestPipeName()
