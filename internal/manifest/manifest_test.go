@@ -24,6 +24,85 @@ func TestRepositoryManifest(t *testing.T) {
 	}
 }
 
+func TestParseManifestRejectsUnknownFieldsAndDocuments(t *testing.T) {
+	for _, input := range []string{
+		"version: 1\ncomponents:\n  crun:\n    sha256x: typo\n",
+		"version: 1\nunknown: value\n",
+		"version: 1\n---\nversion: 1\n",
+	} {
+		if _, err := parseManifest([]byte(input)); err == nil {
+			t.Errorf("accepted invalid manifest %q", input)
+		}
+	}
+	if _, err := parseManifest([]byte("version: 1\ncomponents:\n  a:\n    source: x\n")); err != nil {
+		t.Fatalf("valid manifest rejected: %v", err)
+	}
+}
+
+func TestManifestRejectsInvalidComponentPins(t *testing.T) {
+	m, err := Load(filepath.Join("..", "..", "build", "manifest.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name      string
+		component Component
+	}{
+		{"short commit", Component{Source: "https://github.com/example/repo", Commit: "abcd"}},
+		{"uppercase commit", Component{Source: "https://github.com/example/repo", Commit: strings.Repeat("A", 40)}},
+		{"unsigned artifact", Component{Source: "https://github.com/example/repo/releases/download/v1/binary", Version: "1"}},
+		{"non-hex commit", Component{Source: "https://github.com/example/repo", Commit: strings.Repeat("z", 40)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m.Components["test"] = tc.component
+			if err := m.verifyComponents(); err == nil {
+				t.Fatal("accepted invalid pin")
+			}
+		})
+	}
+	delete(m.Components, "test")
+	if err := m.verifyComponents(); err != nil {
+		t.Fatalf("valid pins rejected: %v", err)
+	}
+}
+
+func TestPatchPathsStayInsideRoot(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(parent, "outside.patch")
+	data := []byte("synthetic")
+	if err := os.WriteFile(outside, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+	if err := os.WriteFile(filepath.Join(root, "valid.patch"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := Manifest{Patches: map[string]Patch{"p": {File: "valid.patch", SHA256: digest}}}
+	if err := m.verifyPatches(root); err != nil {
+		t.Fatalf("valid patch: %v", err)
+	}
+	for _, path := range []string{"../outside.patch", outside} {
+		m.Patches["p"] = Patch{File: path, SHA256: digest}
+		if err := m.verifyPatches(root); err == nil {
+			t.Errorf("accepted escaping path %q", path)
+		}
+	}
+	link := filepath.Join(root, "link.patch")
+	if err := os.Symlink(outside, link); err == nil {
+		m.Patches["p"] = Patch{File: "link.patch", SHA256: digest}
+		if err := m.verifyPatches(root); err == nil {
+			t.Error("accepted symlink outside root")
+		}
+	} else if runtime.GOOS != "windows" {
+		t.Fatal(err)
+	}
+}
+
 func TestGVProxyPatchHunkCounts(t *testing.T) {
 	path := filepath.Join("..", "..", "build", "patches", "gvproxy-egress-policy-v2.patch")
 	data, err := os.ReadFile(path)
@@ -201,12 +280,12 @@ func TestLinuxLibkrunBuildPinsManifestInputs(t *testing.T) {
 
 func TestVerifyComponentsRejectsMalformedSHA256(t *testing.T) {
 	m := Manifest{Components: map[string]Component{
-		"containerd":         {Version: "1", Source: "x"},
-		"nerdbox":            {Version: "1", Source: "x"},
-		"libkrun":            {Version: "1", Source: "x"},
-		"libkrunfw":          {Version: "1", Source: "x"},
-		"linux-kernel-arm64": {Version: "1", Source: "x", SHA256: "not-a-digest"},
-		"gvisor-tap-vsock":   {Version: "1", Source: "x"},
+		"containerd":         {Version: "1", Source: "https://github.com/example/repo"},
+		"nerdbox":            {Version: "1", Source: "https://github.com/example/repo"},
+		"libkrun":            {Version: "1", Source: "https://github.com/example/repo"},
+		"libkrunfw":          {Version: "1", Source: "https://github.com/example/repo"},
+		"linux-kernel-arm64": {Version: "1", Source: "https://github.com/example/repo", SHA256: "not-a-digest"},
+		"gvisor-tap-vsock":   {Version: "1", Source: "https://github.com/example/repo"},
 	}}
 	if err := m.verifyComponents(); err == nil {
 		t.Fatal("expected malformed component SHA-256 error")
@@ -504,12 +583,12 @@ func TestVerifyRejectsMissingPatch(t *testing.T) {
 	m := Manifest{
 		Version: 1,
 		Components: map[string]Component{
-			"containerd":         {Version: "1", Source: "x"},
-			"nerdbox":            {Version: "1", Source: "x"},
-			"libkrun":            {Version: "1", Source: "x"},
-			"libkrunfw":          {Version: "1", Source: "x"},
-			"linux-kernel-arm64": {Version: "1", Source: "x"},
-			"gvisor-tap-vsock":   {Version: "1", Source: "x"},
+			"containerd":         {Version: "1", Source: "https://github.com/example/repo"},
+			"nerdbox":            {Version: "1", Source: "https://github.com/example/repo"},
+			"libkrun":            {Version: "1", Source: "https://github.com/example/repo"},
+			"libkrunfw":          {Version: "1", Source: "https://github.com/example/repo"},
+			"linux-kernel-arm64": {Version: "1", Source: "https://github.com/example/repo"},
+			"gvisor-tap-vsock":   {Version: "1", Source: "https://github.com/example/repo"},
 		},
 		Patches: map[string]Patch{
 			"missing": {File: "missing.patch", SHA256: "00"},
@@ -529,12 +608,12 @@ func TestVerifyRejectsUnpinnedImage(t *testing.T) {
 	m := Manifest{
 		Version: 1,
 		Components: map[string]Component{
-			"containerd":         {Version: "1", Source: "x"},
-			"nerdbox":            {Version: "1", Source: "x"},
-			"libkrun":            {Version: "1", Source: "x"},
-			"libkrunfw":          {Version: "1", Source: "x"},
-			"linux-kernel-arm64": {Version: "1", Source: "x"},
-			"gvisor-tap-vsock":   {Version: "1", Source: "x"},
+			"containerd":         {Version: "1", Source: "https://github.com/example/repo"},
+			"nerdbox":            {Version: "1", Source: "https://github.com/example/repo"},
+			"libkrun":            {Version: "1", Source: "https://github.com/example/repo"},
+			"libkrunfw":          {Version: "1", Source: "https://github.com/example/repo"},
+			"linux-kernel-arm64": {Version: "1", Source: "https://github.com/example/repo"},
+			"gvisor-tap-vsock":   {Version: "1", Source: "https://github.com/example/repo"},
 		},
 		Patches: map[string]Patch{
 			"p": {File: "p.patch", SHA256: "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df"},
