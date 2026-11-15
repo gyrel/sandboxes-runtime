@@ -35,6 +35,24 @@ patches, and the default image digest. Validate the checked-in inputs with:
 make runtime-verify
 ```
 
+## Host-services NAT exposure
+
+The IPv4 gateway address is `192.168.127.1`. The gateway can also install a
+host-services NAT alias that makes a guest-visible address reach host loopback:
+`192.168.127.254` maps to `127.0.0.1`, and with the experimental IPv6 datapath
+`fd72:6865:6963:1::2` maps to `::1`. Egress
+policy is evaluated on the guest-visible address before NAT. A broad allow such
+as `0.0.0.0/0`, `192.168.127.0/24`, or `::/0` therefore implies access to every
+host loopback service on the matching address family, including host-local
+daemons and development servers.
+
+The pinned gvproxy datapath installs a loopback NAT entry only when host
+services are explicitly enabled for the sandbox (`hostServicesEnabled: true`)
+or the policy contains an exact-host allow for the alias, such as
+`192.168.127.254/32`. A covering broad allow alone does not install it. Keep
+egress rules narrow, avoid broad CIDRs, and do not enable host services for
+sandboxes that do not need the proxy helper or registry endpoints.
+
 ## containerd adapter
 
 `ctr` is the first lifecycle adapter. It uses a pinned containerd CLI and

@@ -3480,7 +3480,7 @@ index 613b32a..0ffa23a 100644
  	// List of search domains that will be added in all DHCP replies
  	DNSSearchDomains []string `yaml:"dnsSearchDomains,omitempty"`
  
-@@ -65,6 +70,14 @@ type Configuration struct {
+@@ -65,6 +70,20 @@ type Configuration struct {
  
  	// Timeout in seconds for outbound TCP connection attempts (default: 30)
  	TCPConnectTimeout int `yaml:"tcpConnectTimeout,omitempty"`
@@ -3492,6 +3492,12 @@ index 613b32a..0ffa23a 100644
 +	// IPv6Enabled enables the experimental IPv6 guest datapath. Keep this false
 +	// until policy enforcement and the runtime capability are both enabled.
 +	IPv6Enabled bool `yaml:"ipv6Enabled,omitempty"`
++
++	// HostServicesEnabled permits NAT entries that translate a guest-visible
++	// address to host loopback. It must be set only when the sandbox actually
++	// has host services enabled. It is off by default, so a broad egress allow
++	// cannot implicitly expose host loopback services.
++	HostServicesEnabled bool `yaml:"hostServicesEnabled,omitempty"`
  }
  
  type Protocol string
@@ -5933,7 +5939,7 @@ new file mode 100644
 index 0000000..21dbcec
 --- /dev/null
 +++ b/pkg/virtualnetwork/nat_table_test.go
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,170 @@
 +package virtualnetwork
 +
 +import (
@@ -6016,6 +6022,94 @@ index 0000000..21dbcec
 +		t.Fatalf("IPv6 NAT entry=%s ok=%v, want ::1", destination, ok)
 +	}
 +}
++
++func TestParseNATTableHostServicesRequiresExplicitOptIn(t *testing.T) {
++	hostServicesNAT := map[string]string{
++		"192.168.127.254":     "127.0.0.1",
++		"fd72:6865:6963:1::2": "::1",
++	}
++	broadAllow := &types.EgressPolicy{Allow: []types.EgressRule{
++		{Protocol: "tcp", CIDR: "0.0.0.0/0"},
++		{Protocol: "tcp", CIDR: "::/0"},
++	}}
++	exactIPv4Allow := &types.EgressPolicy{Allow: []types.EgressRule{
++		{Protocol: "tcp", CIDR: "192.168.127.254/32", Port: 8443},
++	}}
++	tests := []struct {
++		name       string
++		config     *types.Configuration
++		wantIPv4   bool
++		wantIPv6   bool
++		wantLength int
++	}{
++		{
++			name:       "host services enabled",
++			config:     &types.Configuration{NAT: hostServicesNAT, HostServicesEnabled: true, EgressPolicy: broadAllow},
++			wantIPv4:   true,
++			wantIPv6:   true,
++			wantLength: 2,
++		},
++		{
++			name:       "host services disabled with broad allow",
++			config:     &types.Configuration{NAT: hostServicesNAT, EgressPolicy: broadAllow},
++			wantLength: 0,
++		},
++		{
++			name:       "exact host-services allow is an explicit opt-in",
++			config:     &types.Configuration{NAT: hostServicesNAT, EgressPolicy: exactIPv4Allow},
++			wantIPv4:   true,
++			wantLength: 1,
++		},
++		{
++			name:       "legacy configuration without a policy",
++			config:     &types.Configuration{NAT: hostServicesNAT},
++			wantIPv4:   true,
++			wantIPv6:   true,
++			wantLength: 2,
++		},
++	}
++	for _, test := range tests {
++		t.Run(test.name, func(t *testing.T) {
++			table := parseNATTable(test.config)
++			if len(table) != test.wantLength {
++				t.Fatalf("translation table has %d entries, want %d: %v", len(table), test.wantLength, table)
++			}
++			v4Source := tcpip.AddrFrom4([4]byte{192, 168, 127, 254})
++			if _, ok := table[v4Source]; ok != test.wantIPv4 {
++				t.Fatalf("IPv4 host-services entry present=%v, want %v", ok, test.wantIPv4)
++			}
++			v6Source := tcpip.AddrFrom16Slice(net.ParseIP("fd72:6865:6963:1::2").To16())
++			if _, ok := table[v6Source]; ok != test.wantIPv6 {
++				t.Fatalf("IPv6 host-services entry present=%v, want %v", ok, test.wantIPv6)
++			}
++		})
++	}
++}
++
++func TestParseNATTableBroadAllowDoesNotExposeHostLoopback(t *testing.T) {
++	configuration := &types.Configuration{
++		NAT: map[string]string{
++			"192.168.127.254":     "127.0.0.1",
++			"fd72:6865:6963:1::2": "::1",
++			"198.51.100.7":        "203.0.113.7",
++		},
++		EgressPolicy: &types.EgressPolicy{Allow: []types.EgressRule{
++			{Protocol: "tcp", CIDR: "0.0.0.0/0"},
++			{Protocol: "tcp", CIDR: "::/0"},
++		}},
++	}
++	table := parseNATTable(configuration)
++	if len(table) != 1 {
++		t.Fatalf("translation table has %d entries, want only the non-loopback row: %v", len(table), table)
++	}
++	source, ok := parseNATAddress("198.51.100.7")
++	if !ok {
++		t.Fatal("non-loopback test source did not parse")
++	}
++	if destination, ok := table[source]; !ok || destination.String() != "203.0.113.7" {
++		t.Fatalf("non-loopback NAT entry=%s ok=%v, want 203.0.113.7", destination, ok)
++	}
++}
 diff --git a/pkg/virtualnetwork/services.go b/pkg/virtualnetwork/services.go
 index 3ed9a99..8a875b6 100644
 --- a/pkg/virtualnetwork/services.go
@@ -6061,7 +6155,7 @@ index 3ed9a99..8a875b6 100644
  	if err != nil {
  		return nil, err
  	}
-@@ -47,18 +53,71 @@ func addServices(configuration *types.Configuration, s *stack.Stack, ipPool *tap
+@@ -47,18 +53,127 @@ func addServices(configuration *types.Configuration, s *stack.Stack, ipPool *tap
  	mux.Handle("/forwarder/", http.StripPrefix("/forwarder", portsForwarder.Mux()))
  	mux.Handle("/dhcp/", http.StripPrefix("/dhcp", dhcpMux))
  	mux.Handle("/dns/", http.StripPrefix("/dns", dnsMux))
@@ -6098,6 +6192,12 @@ index 3ed9a99..8a875b6 100644
 +// may be IPv4 or IPv6; IPv4-mapped IPv6 addresses normalize to IPv4, matching
 +// the policy compiler. Invalid rows are ignored rather than translated to a
 +// zero address, so a typo cannot silently redirect traffic.
++//
++// A translation to host loopback is a privilege boundary: policy is evaluated
++// on the guest-visible address before NAT, so a broad allow such as
++// 0.0.0.0/0 would otherwise grant access to every host loopback service. Such
++// entries are installed only when host services are explicitly enabled, or
++// when the policy contains an exact-host allow for that guest-visible address.
  func parseNATTable(configuration *types.Configuration) map[tcpip.Address]tcpip.Address {
  	translation := make(map[tcpip.Address]tcpip.Address)
  	for source, destination := range configuration.NAT {
@@ -6110,12 +6210,62 @@ index 3ed9a99..8a875b6 100644
 +		if !ok {
 +			continue
 +		}
++		if isHostLoopback(destinationAddress) && !hostServicesAliasAllowed(configuration, sourceAddress) {
++			continue
++		}
 +		translation[sourceAddress] = destinationAddress
  	}
  	return translation
  }
  
 -func dnsServer(configuration *types.Configuration, s *stack.Stack) (http.Handler, error) {
++// hostServicesAliasAllowed reports whether a host-loopback NAT entry may be
++// installed. Legacy configurations without an egress policy keep the previous
++// behaviour; policy-enforced sandboxes require an explicit host-services opt-in
++// or an exact-host allow rule for the guest-visible alias.
++func hostServicesAliasAllowed(configuration *types.Configuration, source tcpip.Address) bool {
++	if configuration.HostServicesEnabled {
++		return true
++	}
++	if configuration.EgressPolicy == nil {
++		return true
++	}
++	for _, rule := range configuration.EgressPolicy.Allow {
++		if rule.CIDR == "" {
++			continue
++		}
++		ip, network, err := net.ParseCIDR(strings.TrimSpace(rule.CIDR))
++		if err != nil || ip == nil {
++			continue
++		}
++		ones, bits := network.Mask.Size()
++		if ones != bits {
++			continue
++		}
++		if network.IP.Equal(net.IP(source.AsSlice())) {
++			return true
++		}
++	}
++	return false
++}
++
++func isHostLoopback(address tcpip.Address) bool {
++	if v4 := address.To4(); v4.Len() == 4 {
++		octets := v4.As4()
++		return octets[0] == 127
++	}
++	if address.Len() != 16 {
++		return false
++	}
++	octets := address.As16()
++	for _, octet := range octets[:15] {
++		if octet != 0 {
++			return false
++		}
++	}
++	return octets[15] == 1
++}
++
 +func parseNATAddress(value string) (tcpip.Address, bool) {
 +	ip := net.ParseIP(strings.TrimSpace(value))
 +	if ip == nil {
