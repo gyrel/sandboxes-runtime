@@ -2,6 +2,7 @@ package ctr
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"path"
@@ -132,6 +133,10 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if exists {
 		return runtime.Handle{}, fmt.Errorf("container %s already exists", id)
 	}
+	generation, err := newCreateGeneration()
+	if err != nil {
+		return runtime.Handle{}, err
+	}
 	var attachment runtime.NetworkAttachment
 	if b.network != nil {
 		var err error
@@ -144,6 +149,7 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 		ContainerID: id,
 		Name:        cfg.Name,
 		Image:       image,
+		Generation:  generation,
 		CPUs:        cfg.CPUs,
 		MemoryMiB:   cfg.MemoryMiB,
 		FIFODir:     fifoDir,
@@ -159,7 +165,7 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	}
 	spec.Mounts = append(spec.Mounts, workspaceMounts...)
 	if err := b.client.Run(ctx, spec); err != nil {
-		cleanupErr := b.cleanupFailedCreate(ctx, id)
+		cleanupErr := b.cleanupFailedCreate(ctx, id, generation)
 		if b.network != nil {
 			cleanupErr = errors.Join(cleanupErr, b.stopNetwork(ctx, cfg.Name))
 		}
@@ -343,12 +349,34 @@ func validProxyServiceHost(host string) bool {
 // cleanupFailedCreate removes a container that ctr created before its run
 // failed. Without it a partial container keeps the sandbox name reserved and
 // every retry fails with "container already exists".
-func (b *Backend) cleanupFailedCreate(ctx context.Context, id string) error {
+//
+// The container id is derived from the sandbox name, so it cannot distinguish
+// this attempt from a concurrent create that reused the name. Deletion
+// therefore requires the container's generation label to match the generation
+// recorded by this attempt. A missing or unreadable generation fails closed
+// instead of deleting a container whose owner cannot be established.
+func (b *Backend) cleanupFailedCreate(ctx context.Context, id, generation string) error {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
 	exists, err := b.client.containerExists(cleanupCtx, id)
 	if err != nil || !exists {
 		return err
+	}
+	if generation == "" {
+		return fmt.Errorf("verify container %s ownership after failed create: missing generation", id)
+	}
+	labels, err := b.client.containerLabels(cleanupCtx, id)
+	if err != nil {
+		return fmt.Errorf("verify container %s ownership after failed create: %w", id, err)
+	}
+	observed := labels[generationLabel]
+	if observed == "" {
+		return fmt.Errorf("verify container %s ownership after failed create: container has no generation label", id)
+	}
+	if observed != generation {
+		// Another create owns this container now; leaving it intact is the
+		// only safe outcome.
+		return nil
 	}
 	// A failed run may leave a task behind; ignore its absence.
 	_ = b.client.DeleteTask(cleanupCtx, id)
@@ -356,6 +384,14 @@ func (b *Backend) cleanupFailedCreate(ctx context.Context, id string) error {
 		return fmt.Errorf("remove container after failed create: %w", err)
 	}
 	return nil
+}
+
+func newCreateGeneration() (string, error) {
+	var token [16]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		return "", fmt.Errorf("generate sandbox generation: %w", err)
+	}
+	return fmt.Sprintf("%x", token), nil
 }
 
 func applyProxyChannel(spec *RunSpec, cfg *runtime.Config) error {

@@ -2,6 +2,7 @@ package ctr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -11,6 +12,11 @@ import (
 
 const taskRunning = "RUNNING"
 const taskStopped = "STOPPED"
+
+const (
+	sandboxLabel    = "io.rheic.sandbox"
+	generationLabel = "io.rheic.sandbox.generation"
+)
 
 // Runner executes ctr commands. Tests can replace it with a fake.
 type Runner interface {
@@ -83,6 +89,20 @@ func (c *Client) containerExists(ctx context.Context, id string) (bool, error) {
 	return containsLine(out, id), nil
 }
 
+func (c *Client) containerLabels(ctx context.Context, id string) (map[string]string, error) {
+	out, err := c.run(ctx, "containers", "info", id)
+	if err != nil {
+		return nil, err
+	}
+	var info struct {
+		Labels map[string]string `json:"Labels"`
+	}
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return nil, fmt.Errorf("decode container info: %w", err)
+	}
+	return info.Labels, nil
+}
+
 // TaskRunning reports whether a task is running.
 func (c *Client) TaskRunning(ctx context.Context, id string) bool {
 	status, _ := c.taskStatus(ctx, id)
@@ -128,6 +148,9 @@ type RunSpec struct {
 	ContainerID string
 	Name        string
 	Image       string
+	// Generation identifies one create attempt. It is recorded as a container
+	// label so failed-create cleanup can prove ownership before deleting.
+	Generation  string
 	CPUs        uint8
 	MemoryMiB   uint32
 	FIFODir     string
@@ -157,9 +180,12 @@ func (c *Client) Run(ctx context.Context, spec RunSpec) error {
 		"run", "--detach",
 		"--runtime", c.cfg.Runtime,
 		"--snapshotter", c.cfg.Snapshotter,
-		"--label", "io.rheic.sandbox=" + spec.Name,
+		"--label", sandboxLabel + "=" + spec.Name,
 		"--cpus", strconv.Itoa(int(spec.CPUs)),
 		"--memory-limit", strconv.FormatUint(uint64(spec.MemoryMiB)*1024*1024, 10),
+	}
+	if spec.Generation != "" {
+		args = append(args, "--label", generationLabel+"="+spec.Generation)
 	}
 	if spec.FIFODir != "" {
 		args = append(args, "--fifo-dir", spec.FIFODir)
