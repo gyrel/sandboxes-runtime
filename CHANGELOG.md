@@ -12,6 +12,13 @@
   guest runtime or kernel fails sandbox creation instead of retrying with a
   shallow `ro` bind.
 
+### Fixed
+
+- Make failed-create cleanup verify the sandbox generation label recorded by
+  that create attempt before deleting a container, so a concurrent create for
+  the same name cannot lose the container it owns. Missing or unreadable
+  ownership metadata fails closed and preserves the cleanup error.
+
 ### Security and limitations
 
 - Recursive read-only workspace mounts require the pinned guest crun with

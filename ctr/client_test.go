@@ -598,10 +598,12 @@ func TestBackendNetworkAnnotations(t *testing.T) {
 
 func TestCreateRemovesContainerWhenRunFails(t *testing.T) {
 	listings := 0
+	generation := ""
 	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
 		joined := strings.Join(args, " ")
 		switch {
 		case strings.Contains(joined, "run --detach"):
+			generation = labelValue(args, generationLabel)
 			return []byte("failed format"), errors.New("exit status 1")
 		case strings.Contains(joined, "containers ls -q"):
 			listings++
@@ -609,6 +611,11 @@ func TestCreateRemovesContainerWhenRunFails(t *testing.T) {
 				return nil, nil // pre-create check: name is free
 			}
 			return []byte("rheic-dev\n"), nil // ctr left a partial container
+		case strings.Contains(joined, "containers info"):
+			return []byte(fmt.Sprintf(
+				`{"ID":"rheic-dev","Labels":{"%s":"dev","%s":%q}}`,
+				sandboxLabel, generationLabel, generation,
+			)), nil
 		}
 		return nil, nil
 	}}
@@ -620,10 +627,114 @@ func TestCreateRemovesContainerWhenRunFails(t *testing.T) {
 	if _, err := backend.Create(context.Background(), runtime.Config{Name: "dev", Image: "img"}); err == nil {
 		t.Fatal("failed run returned no error")
 	}
+	if generation == "" {
+		t.Fatal("create did not record a generation label")
+	}
 	calls := fmt.Sprint(runner.calls)
 	if !strings.Contains(calls, "containers delete rheic-dev") {
 		t.Fatalf("partial container was not removed: %s", calls)
 	}
+}
+
+func TestCreateCleanupLeavesContainerOwnedByAnotherCreate(t *testing.T) {
+	runErr := errors.New("first create failed")
+	listings := 0
+	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		switch {
+		case strings.Contains(joined, "run --detach"):
+			return []byte("failed format"), runErr
+		case strings.Contains(joined, "containers ls -q"):
+			listings++
+			if listings == 1 {
+				return nil, nil // pre-create check: name is free
+			}
+			return []byte("rheic-dev\n"), nil // a concurrent create now owns the name
+		case strings.Contains(joined, "containers info"):
+			return []byte(fmt.Sprintf(
+				`{"ID":"rheic-dev","Labels":{"%s":"dev","%s":"concurrent-create"}}`,
+				sandboxLabel, generationLabel,
+			)), nil
+		}
+		return nil, nil
+	}}
+	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend.client.runner = runner
+	if _, err := backend.Create(context.Background(), runtime.Config{Name: "dev", Image: "img"}); !errors.Is(err, runErr) {
+		t.Fatalf("create error = %v, want %v", err, runErr)
+	}
+	calls := fmt.Sprint(runner.calls)
+	if strings.Contains(calls, "containers delete") || strings.Contains(calls, "tasks delete") {
+		t.Fatalf("cleanup deleted a container owned by another create: %s", calls)
+	}
+}
+
+func TestCreateCleanupFailsClosedWithoutContainerIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		info string
+		want string
+	}{
+		{
+			name: "missing generation label",
+			info: fmt.Sprintf(`{"ID":"rheic-dev","Labels":{"%s":"dev"}}`, sandboxLabel),
+			want: "no generation label",
+		},
+		{
+			name: "unreadable container info",
+			info: "not json",
+			want: "verify container rheic-dev ownership",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runErr := errors.New("create failed")
+			listings := 0
+			runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
+				joined := strings.Join(args, " ")
+				switch {
+				case strings.Contains(joined, "run --detach"):
+					return nil, runErr
+				case strings.Contains(joined, "containers ls -q"):
+					listings++
+					if listings == 1 {
+						return nil, nil
+					}
+					return []byte("rheic-dev\n"), nil
+				case strings.Contains(joined, "containers info"):
+					return []byte(tc.info), nil
+				}
+				return nil, nil
+			}}
+			backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			backend.client.runner = runner
+			_, err = backend.Create(context.Background(), runtime.Config{Name: "dev", Image: "img"})
+			if !errors.Is(err, runErr) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("create error = %v, want run error and %q", err, tc.want)
+			}
+			calls := fmt.Sprint(runner.calls)
+			if strings.Contains(calls, "containers delete") || strings.Contains(calls, "tasks delete") {
+				t.Fatalf("cleanup deleted without proving identity: %s", calls)
+			}
+		})
+	}
+}
+
+func labelValue(args []string, key string) string {
+	for i, arg := range args {
+		if arg != "--label" || i+1 >= len(args) {
+			continue
+		}
+		if name, value, ok := strings.Cut(args[i+1], "="); ok && name == key {
+			return value
+		}
+	}
+	return ""
 }
 
 func TestCreateRecursiveReadOnlyMountFailsClosed(t *testing.T) {
