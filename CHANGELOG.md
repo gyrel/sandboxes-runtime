@@ -16,6 +16,13 @@
   guest runtime or kernel fails sandbox creation instead of retrying with a
   shallow `ro` bind.
 
+### Changed
+
+- Remove the mandatory M7 external security review gate from the pre-tag
+  release workflow. Release candidates still require the full reusable CI
+  workflow and the candidate validation controls before an immutable,
+  non-force tag is created from `main`.
+
 ### Fixed
 
 - Make failed-create cleanup verify the sandbox generation label recorded by
