@@ -3,6 +3,7 @@ package ctr
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"path"
@@ -203,6 +204,7 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	for _, volume := range cfg.BlockVolumes {
 		spec.Mounts = append(spec.Mounts, Mount{Type: "ext4", Source: volume.Source, Destination: volume.Destination})
 	}
+	spec.Annotations = append(spec.Annotations, workspaceAnnotations(workspaceMounts)...)
 	spec.Mounts = append(spec.Mounts, workspaceMounts...)
 	if err := b.client.Run(ctx, spec); err != nil {
 		cleanupErr := b.cleanupFailedCreate(ctx, id, generation)
@@ -212,6 +214,15 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 		return runtime.Handle{}, errors.Join(err, cleanupErr)
 	}
 	return runtime.Handle{ID: id, FIFODir: fifoDir}, nil
+}
+
+func workspaceAnnotations(mounts []Mount) []string {
+	annotations := make([]string, 0, len(mounts))
+	for _, workspace := range mounts {
+		hash := sha256.Sum256([]byte(workspace.Destination))
+		annotations = append(annotations, fmt.Sprintf("io.rheic.workspace.%x=true", hash[:]))
+	}
+	return annotations
 }
 
 func workspaceMounts(cfg *runtime.Config) ([]Mount, error) {
