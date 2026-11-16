@@ -377,3 +377,39 @@ environment. The QEMU source archive is signed upstream; verify its signature
 and the pinned SHA-512 before applying the patch. The native Windows build
 recipe and signed release artifacts are still outstanding; do not substitute
 an unpatched system QEMU binary.
+
+## Runtime bundle integrity status
+
+The repository does not yet produce or publish a complete runtime bundle.
+Pinned source and patch versions are build inputs, not artifact provenance.
+Darwin/arm64 and Linux/arm64 are the only platforms named by the current
+source manifest; the existence of these entries does not mean either complete
+payload is currently reproducible from one checked-in build recipe. In
+particular, the current scripts build the nerdbox shim and gvproxy, but do not
+assemble containerd, ctr, libkrun, kernel, and guest rootfs into a release
+bundle.
+
+The bundle package and runtime-bundle command create and check a strict
+per-file inventory. They reject a manifest that declares a different requested platform, plus missing,
+changed, symlinked, and undeclared files. `required-roles` inventories require
+containerd, ctr, nerdbox shim, gvproxy, libkrun, kernel, and guest rootfs; this is
+only a minimum role subset and does not mean the runtime package is complete. A
+partial inventory is experimental and requires the caller to opt in explicitly.
+Platform labels are not inferred from binary bytes. The contract CI workflow uses
+synthetic fixtures only and publishes no artifacts.
+
+The `required-roles` label checks a minimum declared component subset and file
+consistency only. It does not prove the binaries execute, that a VM boots, or that isolation and
+cleanup work. The verifier pins the opened root against a path replacement during open, but
+assumes a private, quiescent staging directory for the remaining inventory and
+hash reads. It is not a defense against a concurrent writer with the same user
+identity.
+
+bundle.json is not a trust anchor. Its hashes detect mismatch only when the
+manifest itself is already trusted. Future runtime installers must first
+verify the enclosing release archive's GitHub artifact attestation against
+this repository, then verify the extracted inventory and requested platform.
+Do not treat a co-located checksum, this verifier alone, or an ad-hoc macOS
+code signature as provenance. No runtime package or install path is approved
+for production until a pinned per-platform build and attested release workflow
+exist and are validated.
