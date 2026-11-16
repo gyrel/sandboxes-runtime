@@ -1,0 +1,22 @@
+--- a/config-libkrunfw_aarch64
++++ b/config-libkrunfw_aarch64
+@@ -1094,6 +1094,7 @@
+ # CONFIG_NFT_QUOTA is not set
+ CONFIG_NFT_REJECT=y
+ CONFIG_NFT_REJECT_INET=y
++CONFIG_NFT_COMPAT=y
+ # CONFIG_NFT_HASH is not set
+ CONFIG_NFT_FIB=y
+ CONFIG_NFT_FIB_INET=y
+@@ -1102,7 +1103,10 @@
+ # CONFIG_NFT_TPROXY is not set
+ # CONFIG_NFT_SYNPROXY is not set
+ # CONFIG_NF_FLOW_TABLE is not set
+-# CONFIG_NETFILTER_XTABLES is not set
++CONFIG_NETFILTER_XTABLES=y
++CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
++CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
++CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y
+ # end of Core Netfilter Configuration
+ 
+ # CONFIG_IP_SET is not set

@@ -161,6 +161,20 @@ After archiving a capped file, restart its gateway to resume audit recording.
   returns the actual held listener address. The generic expose endpoint rejects
   host port zero. This source and package-test evidence does not validate live
   guest Git daemon startup, host reachability, or remote reconciliation.
+- `patches/libkrunfw-netfilter-xtables-aarch64.patch` — enables
+  `CONFIG_NETFILTER_XTABLES`, `CONFIG_NFT_COMPAT`, the `addrtype` and
+  `conntrack` xtables matches, and the `MASQUERADE` xtables target in
+  libkrunfw's pinned ARM64 kernel config. Docker's iptables/nftables bridge
+  setup and outbound source NAT require these; the pinned config disabled
+  xtables completely. `scripts/build-libkrun-linux.sh` verifies the patch
+  SHA-256, applies it only after pinned-source verification, rejects a change
+  outside the config file, and runs
+  `scripts/verify-libkrunfw-netfilter-config.sh` before building the kernel.
+  The verifier requires the five Docker symbols at `=y` together with their
+  existing netfilter prerequisites, because the guest packages only the kernel
+  Image and cannot load modules. Source and config checks are not live Docker
+  validation; the patch remains experimental until a guest boot proves Docker
+  bridge creation and container egress through NAT.
 - `patches/nerdbox-gpt-threshold.patch` — the disk allocator follows Linux
   multi-letter names after `vdz` (for example, `vdaa`) for deterministic device
   naming. On Linux, the shim declines a block-device mapping that needs more
@@ -284,7 +298,9 @@ reproducible build.
 
 The Linux source build recipe is `scripts/build-libkrun-linux.sh`. It checks
 the manifest-pinned libkrun/libkrunfw commits, the Linux kernel archive digest,
-Rust `1.90.0`, and GCC `13.3.0`, then installs the libraries and the raw
+Rust `1.90.0`, and GCC `13.3.0`; after pinned-source verification it applies
+the pinned ARM64 netfilter config patch and rejects any config missing the
+required Docker symbols. It then installs the libraries and the raw
 `nerdbox-kernel-arm64` image required by the pinned shim. Build metadata records
 the kernel image hash as well as library hashes, and the prefix verifier rejects
 missing or changed artifacts. Set `LIBKRUN_PREFIX` to an empty absolute
@@ -294,6 +310,18 @@ are always cloned into temporary build trees and removed after the build.
 post-build file drift against that prefix metadata. Since the metadata is
 stored beside the libraries and is not signed, this check is not an
 independent provenance or adversarial tamper guarantee.
+
+macOS guest kernel packaging does not run
+`scripts/build-libkrun-linux.sh`. The libkrunfw Darwin path builds the kernel
+inside a krunvm builder (`build_on_krunvm.sh`), so the package recipe must apply
+`build/patches/libkrunfw-netfilter-xtables-aarch64.patch` to
+`config-libkrunfw_aarch64` before invoking that build and must run
+`scripts/verify-libkrunfw-netfilter-config.sh` on the patched config. A macOS
+package built from the unpatched libkrunfw config still lacks Docker netfilter
+support. The macOS package also needs live validation: boot the packaged guest
+kernel, confirm Docker creates its bridge and container egress works through
+NAT, and record the evidence. Until that validation exists, treat macOS Docker
+networking as unvalidated even when the config patch is present.
 
 This recipe pins source identities but does not yet claim bit-for-bit
 reproducibility: the complete build image, compiler/linker and system package

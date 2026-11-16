@@ -83,6 +83,10 @@ patches:
     file: patches/qemu-windows-private-pipe-v1.patch
     sha256: e0c199e48712591c1e35e4b1a57b51448dcad9c1a2883678f3c658e5347862e8
     status: experimental
+  libkrunfw-netfilter-xtables-aarch64:
+    file: patches/libkrunfw-netfilter-xtables-aarch64.patch
+    sha256: f777d97980fb467c2eb14ac1e2de99e7a663257a5252c92e5fb894bb2cfe8d7b
+    status: experimental
 images:
   default:
     ref: docker.io/library/alpine:3.22

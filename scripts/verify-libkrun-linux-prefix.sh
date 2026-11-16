@@ -7,6 +7,7 @@ INFO=$PREFIX/share/rheic-runtime/libkrun-linux-arm64-build-info
 LIBKRUN_COMMIT=227b2de6ed323fe180e02f871c5f325a90c13cc2
 LIBKRUNFW_COMMIT=f14ac64ca8a04c6c9d76cac1c61ee050809c88c9
 KERNEL_SHA256=5484e552a334e15019f4aeba89e5b58f04651cf2f4e24e04de9f152f1c38e3fa
+KERNEL_NETFILTER_PATCH_SHA256=f777d97980fb467c2eb14ac1e2de99e7a663257a5252c92e5fb894bb2cfe8d7b
 
 test -f "$INFO" || { echo "missing pinned Linux libkrun build info: $INFO" >&2; exit 1; }
 for pin in \
@@ -16,6 +17,7 @@ for pin in \
   "libkrunfw_commit=$LIBKRUNFW_COMMIT" \
   "kernel_version=linux-6.12.109" \
   "kernel_sha256=$KERNEL_SHA256" \
+  "kernel_netfilter_patch_sha256=$KERNEL_NETFILTER_PATCH_SHA256" \
   "rustc_version=1.90.0" \
   "gcc_version=13.3.0"; do
   key=${pin%%=*}
