@@ -16,6 +16,8 @@ chmod +x "$tmp/checkout/scripts/"*.sh
 cat > "$tmp/checkout/CHANGELOG.md" <<'CHANGELOG'
 # Changelog
 
+## Unreleased
+
 ## v0.0.2 — 2026-11-09
 
 Synthetic current release notes.
