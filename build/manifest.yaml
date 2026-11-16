@@ -23,10 +23,6 @@ components:
     source: https://github.com/containers/crun/releases/download/1.30.1/crun-1.30.1-linux-arm64-disable-systemd
     sha256: 6ac05ea41343cf91b12832c69f9a2a8c6dc5380032f4c0e02a46cc6aba8804f5
     # The digest pins the bytes; signature verification is not implemented.
-  nerdbox-rootfs-base-arm64:
-    version: "0.2.5"
-    source: pinned Linux ARM64 EROFS base generated from the nerdbox commit above
-    sha256: bb7b4ba4df5047d67d0af0ffc9c92b891d8553d4c78a30c14219d079dd003cc3
   libkrun:
     version: "1.19.6"
     commit: 227b2de6ed323fe180e02f871c5f325a90c13cc2
