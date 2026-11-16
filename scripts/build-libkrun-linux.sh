@@ -22,6 +22,8 @@ LIBKRUNFW_COMMIT=f14ac64ca8a04c6c9d76cac1c61ee050809c88c9
 KERNEL_VERSION=linux-6.12.109
 KERNEL_SHA256=5484e552a334e15019f4aeba89e5b58f04651cf2f4e24e04de9f152f1c38e3fa
 KERNEL_URL=https://cdn.kernel.org/pub/linux/kernel/v6.x/$KERNEL_VERSION.tar.xz
+NETFILTER_PATCH=$ROOT/build/patches/libkrunfw-netfilter-xtables-aarch64.patch
+NETFILTER_PATCH_SHA256=f777d97980fb467c2eb14ac1e2de99e7a663257a5252c92e5fb894bb2cfe8d7b
 
 # A caller's jobserver flags can be parsed as a make target by libkrunfw's
 # kernel sub-build. Keep all recursive make invocations scoped to this recipe.
@@ -61,6 +63,23 @@ checkout_source() {
 LIBKRUN_SRC=$(checkout_source https://github.com/containers/libkrun "$LIBKRUN_COMMIT" "$WORK/libkrun")
 LIBKRUNFW_SRC=$(checkout_source https://github.com/containers/libkrunfw "$LIBKRUNFW_COMMIT" "$WORK/libkrunfw")
 
+# The pinned ARM64 config disables xtables, so Docker cannot install its
+# bridge or NAT rules in the guest. Verify and apply the pinned config patch
+# only after verify-pinned-source.sh has accepted the exact upstream checkout.
+test -f "$NETFILTER_PATCH" || { echo "libkrunfw netfilter config patch is missing" >&2; exit 1; }
+actual_patch_sha=$(sha256sum "$NETFILTER_PATCH" | awk '{print $1}')
+if [ "$actual_patch_sha" != "$NETFILTER_PATCH_SHA256" ]; then
+  echo "libkrunfw netfilter config patch checksum mismatch: got $actual_patch_sha" >&2
+  exit 1
+fi
+git -C "$LIBKRUNFW_SRC" apply --check "$NETFILTER_PATCH"
+git -C "$LIBKRUNFW_SRC" apply "$NETFILTER_PATCH"
+if [ "$(git -C "$LIBKRUNFW_SRC" diff --name-only)" != "config-libkrunfw_aarch64" ]; then
+  echo "libkrunfw netfilter config patch changed unexpected files" >&2
+  exit 1
+fi
+"$ROOT/scripts/verify-libkrunfw-netfilter-config.sh" "$LIBKRUNFW_SRC/config-libkrunfw_aarch64"
+
 RUSTUP_TOOLCHAIN=$RUST_VERSION make -C "$LIBKRUN_SRC" -j "$JOBS" BLK=1 NET=1 PREFIX="$LIBKRUN_PREFIX" all
 if ! git -C "$LIBKRUN_SRC" diff --quiet -- Cargo.lock; then
   echo "libkrun build changed Cargo.lock" >&2
@@ -76,6 +95,7 @@ printf '%s  %s\n' "$KERNEL_SHA256" "$KERNEL_TARBALL" | sha256sum --check --statu
   exit 1
 }
 (cd "$LIBKRUNFW_SRC" && make -j "$JOBS" ARCH=arm64 all)
+"$ROOT/scripts/verify-libkrunfw-netfilter-config.sh" "$LIBKRUNFW_SRC/$KERNEL_VERSION/.config"
 (cd "$LIBKRUNFW_SRC" && make ARCH=arm64 PREFIX="$LIBKRUN_PREFIX" install)
 KERNEL_IMAGE=$LIBKRUNFW_SRC/$KERNEL_VERSION/arch/arm64/boot/Image
 test -s "$KERNEL_IMAGE" || { echo "built Linux kernel Image is missing" >&2; exit 1; }
@@ -100,6 +120,7 @@ INFO_TMP=$INFO_DIR/libkrun-linux-arm64-build-info.tmp
   printf 'libkrunfw_sha256=%s\n' "$(sha256sum "$LIBKRUNFW_SO" | awk '{print $1}')"
   printf 'kernel_version=%s\n' "$KERNEL_VERSION"
   printf 'kernel_sha256=%s\n' "$KERNEL_SHA256"
+  printf 'kernel_netfilter_patch_sha256=%s\n' "$NETFILTER_PATCH_SHA256"
   printf 'kernel_image_sha256=%s\n' "$(sha256sum "$LIBKRUN_PREFIX/nerdbox-kernel-arm64" | awk '{print $1}')"
   printf 'rustc_version=%s\n' "$RUST_VERSION"
   printf 'gcc_version=%s\n' "$GCC_VERSION"

@@ -104,7 +104,11 @@ func TestPatchPathsStayInsideRoot(t *testing.T) {
 }
 
 func TestGVProxyPatchHunkCounts(t *testing.T) {
-	path := filepath.Join("..", "..", "build", "patches", "gvproxy-egress-policy-v2.patch")
+	validatePatchHunks(t, filepath.Join("..", "..", "build", "patches", "gvproxy-egress-policy-v2.patch"))
+}
+
+func validatePatchHunks(t *testing.T, path string) {
+	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -278,6 +282,265 @@ func TestLinuxLibkrunBuildPinsManifestInputs(t *testing.T) {
 	}
 }
 
+func TestLibkrunfwNetfilterConfigPatch(t *testing.T) {
+	root := filepath.Join("..", "..")
+	m, err := Load(filepath.Join(root, "build", "manifest.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch, ok := m.Patches["libkrunfw-netfilter-xtables-aarch64"]
+	if !ok {
+		t.Fatal("manifest does not register the libkrunfw netfilter patch")
+	}
+	if patch.File != "patches/libkrunfw-netfilter-xtables-aarch64.patch" {
+		t.Fatalf("unexpected netfilter patch path %q", patch.File)
+	}
+	patchPath := filepath.Join(root, "build", patch.File)
+	data, err := os.ReadFile(patchPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	if got := hex.EncodeToString(sum[:]); got != patch.SHA256 {
+		t.Fatalf("netfilter patch digest = %s, manifest pins %s", got, patch.SHA256)
+	}
+
+	wantAdded := map[string]bool{
+		"+CONFIG_NFT_COMPAT=y":                     true,
+		"+CONFIG_NETFILTER_XTABLES=y":              true,
+		"+CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y": true,
+		"+CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y":    true,
+		"+CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y":   true,
+	}
+	patchText := string(data)
+	added, removed := 0, 0
+	for _, line := range strings.Split(strings.TrimSuffix(patchText, "\n"), "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++ ") || strings.HasPrefix(line, "--- "):
+			continue
+		case strings.HasPrefix(line, "+"):
+			added++
+			if !wantAdded[line] {
+				t.Errorf("netfilter patch adds unexpected config line %q", line)
+			}
+		case strings.HasPrefix(line, "-"):
+			removed++
+			if line != "-# CONFIG_NETFILTER_XTABLES is not set" {
+				t.Errorf("netfilter patch removes unexpected config line %q", line)
+			}
+		}
+	}
+	if added != len(wantAdded) {
+		t.Errorf("netfilter patch adds %d symbols, want %d", added, len(wantAdded))
+	}
+	if removed != 1 {
+		t.Errorf("netfilter patch removes %d config lines, want 1", removed)
+	}
+	if strings.Count(patchText, "--- a/") != 1 || strings.Count(patchText, "+++ b/") != 1 {
+		t.Error("netfilter patch must touch exactly one file")
+	}
+	validatePatchHunks(t, patchPath)
+}
+
+func TestLibkrunfwNetfilterConfigPatchApplies(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("netfilter config verifier requires a POSIX shell")
+	}
+	root := filepath.Join("..", "..")
+	patchPath, err := filepath.Abs(filepath.Join(root, "build", "patches", "libkrunfw-netfilter-xtables-aarch64.patch"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config-libkrunfw_aarch64")
+	fixture := strings.Join([]string{
+		"CONFIG_NETFILTER=y",
+		"CONFIG_NF_CONNTRACK=y",
+		"CONFIG_NF_NAT=y",
+		"CONFIG_NF_NAT_MASQUERADE=y",
+		"CONFIG_NF_TABLES=y",
+		"CONFIG_NF_TABLES_IPV4=y",
+		"CONFIG_NFT_NAT=y",
+		"",
+		"# CONFIG_NFT_TUNNEL is not set",
+		"# CONFIG_NFT_QUOTA is not set",
+		"CONFIG_NFT_REJECT=y",
+		"CONFIG_NFT_REJECT_INET=y",
+		"# CONFIG_NFT_HASH is not set",
+		"CONFIG_NFT_FIB=y",
+		"CONFIG_NFT_FIB_INET=y",
+		"# CONFIG_NFT_SOCKET is not set",
+		"# CONFIG_NFT_OSF is not set",
+		"# CONFIG_NFT_TPROXY is not set",
+		"# CONFIG_NFT_SYNPROXY is not set",
+		"# CONFIG_NF_FLOW_TABLE is not set",
+		"# CONFIG_NETFILTER_XTABLES is not set",
+		"# end of Core Netfilter Configuration",
+		"",
+		"# CONFIG_IP_SET is not set",
+		"",
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(fixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGitApply := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "apply"}, args...)...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git apply %v: %v\n%s", args, err, output)
+		}
+	}
+	runGitApply("--check", patchPath)
+	runGitApply(patchPath)
+	patched, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"CONFIG_NETFILTER_XTABLES=y",
+		"CONFIG_NFT_COMPAT=y",
+		"CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y",
+		"CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y",
+		"CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y",
+	} {
+		if got := strings.Count(string(patched), want+"\n"); got != 1 {
+			t.Errorf("patched config has %d occurrences of %s, want 1", got, want)
+		}
+	}
+	if strings.Contains(string(patched), "# CONFIG_NETFILTER_XTABLES is not set") {
+		t.Error("patched config still disables NETFILTER_XTABLES")
+	}
+	cmd := exec.Command("sh", filepath.Join(root, "scripts", "verify-libkrunfw-netfilter-config.sh"), configPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("patched config rejected: %v\n%s", err, output)
+	}
+}
+
+func TestLibkrunfwNetfilterConfigVerifierRejectsDrift(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("netfilter config verifier requires a POSIX shell")
+	}
+	root := filepath.Join("..", "..")
+	script := filepath.Join(root, "scripts", "verify-libkrunfw-netfilter-config.sh")
+	base := strings.Join([]string{
+		"CONFIG_NETFILTER=y",
+		"CONFIG_NF_CONNTRACK=y",
+		"CONFIG_NF_NAT=y",
+		"CONFIG_NF_NAT_MASQUERADE=y",
+		"CONFIG_NF_TABLES=y",
+		"CONFIG_NF_TABLES_IPV4=y",
+		"CONFIG_NFT_NAT=y",
+		"CONFIG_NETFILTER_XTABLES=y",
+		"CONFIG_NFT_COMPAT=y",
+		"CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y",
+		"CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y",
+		"CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y",
+		"",
+	}, "\n")
+	tests := []struct {
+		name   string
+		config string
+		ok     bool
+	}{
+		{name: "complete", config: base, ok: true},
+		{
+			name:   "xtables disabled",
+			config: strings.Replace(base, "CONFIG_NETFILTER_XTABLES=y", "# CONFIG_NETFILTER_XTABLES is not set", 1),
+		},
+		{
+			name:   "conntrack match missing",
+			config: strings.Replace(base, "CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y\n", "", 1),
+		},
+		{
+			name:   "masquerade modular",
+			config: strings.Replace(base, "CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y", "CONFIG_NETFILTER_XT_TARGET_MASQUERADE=m", 1),
+		},
+		{
+			name:   "duplicate xtables",
+			config: base + "CONFIG_NETFILTER_XTABLES=y\n",
+		},
+		{
+			name:   "nftables modular",
+			config: strings.Replace(base, "CONFIG_NF_TABLES=y", "CONFIG_NF_TABLES=m", 1),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config")
+			if err := os.WriteFile(path, []byte(test.config), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("sh", script, path)
+			output, err := cmd.CombinedOutput()
+			if test.ok && err != nil {
+				t.Fatalf("verifier rejected a complete config: %v\n%s", err, output)
+			}
+			if !test.ok && err == nil {
+				t.Fatalf("verifier accepted a drifted config: %s", output)
+			}
+		})
+	}
+}
+
+func TestLinuxLibkrunBuildAppliesNetfilterPatch(t *testing.T) {
+	root := filepath.Join("..", "..")
+	m, err := Load(filepath.Join(root, "build", "manifest.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch, ok := m.Patches["libkrunfw-netfilter-xtables-aarch64"]
+	if !ok || patch.SHA256 == "" {
+		t.Fatal("manifest does not pin the libkrunfw netfilter patch")
+	}
+	data, err := os.ReadFile(filepath.Join(root, "scripts", "build-libkrun-linux.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	if !strings.Contains(script, patch.SHA256) {
+		t.Error("Linux build script does not verify the netfilter patch digest")
+	}
+	if !strings.Contains(script, `verify-pinned-source.sh" "$output_path" "$commit"`) {
+		t.Error("Linux build script does not verify the pinned source before patching")
+	}
+	if !strings.Contains(script, `git -C "$LIBKRUNFW_SRC" diff --name-only`) {
+		t.Error("Linux build script does not reject unexpected patch targets")
+	}
+	if !strings.Contains(script, "kernel_netfilter_patch_sha256=") {
+		t.Error("Linux build script does not record the netfilter patch digest")
+	}
+	prefixVerifier, err := os.ReadFile(filepath.Join(root, "scripts", "verify-libkrun-linux-prefix.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(prefixVerifier), patch.SHA256) {
+		t.Error("Linux prefix verifier does not pin the netfilter patch digest")
+	}
+	positions := []struct {
+		name   string
+		needle string
+	}{
+		{name: "libkrunfw checkout", needle: `LIBKRUNFW_SRC=$(checkout_source`},
+		{name: "patch checksum", needle: `actual_patch_sha=$(sha256sum "$NETFILTER_PATCH"`},
+		{name: "patch apply check", needle: `git -C "$LIBKRUNFW_SRC" apply --check "$NETFILTER_PATCH"`},
+		{name: "patch apply", needle: `git -C "$LIBKRUNFW_SRC" apply "$NETFILTER_PATCH"`},
+		{name: "config verifier", needle: `scripts/verify-libkrunfw-netfilter-config.sh`},
+		{name: "libkrunfw build", needle: `(cd "$LIBKRUNFW_SRC" && make -j "$JOBS" ARCH=arm64 all)`},
+	}
+	last := -1
+	for _, position := range positions {
+		index := strings.Index(script, position.needle)
+		if index < 0 {
+			t.Fatalf("Linux build script is missing %s step", position.name)
+		}
+		if index <= last {
+			t.Errorf("Linux build script runs %s out of order", position.name)
+		}
+		last = index
+	}
+}
+
 func TestVerifyComponentsRejectsMalformedSHA256(t *testing.T) {
 	m := Manifest{Components: map[string]Component{
 		"containerd":         {Version: "1", Source: "https://github.com/example/repo"},
@@ -297,6 +560,14 @@ func TestVerifyLinuxLibkrunPrefixRejectsArtifactAndMetadataDrift(t *testing.T) {
 		t.Skip("Linux prefix verifier requires sha256sum")
 	}
 	root := filepath.Join("..", "..")
+	m, err := Load(filepath.Join(root, "build", "manifest.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	netfilterPatch, ok := m.Patches["libkrunfw-netfilter-xtables-aarch64"]
+	if !ok || netfilterPatch.SHA256 == "" {
+		t.Fatal("manifest does not pin the libkrunfw netfilter patch")
+	}
 	prefix := t.TempDir()
 	libkrun := filepath.Join(prefix, "lib64", "libkrun.so.1.19.6")
 	libkrunfw := filepath.Join(prefix, "lib", "aarch64-linux-gnu", "libkrunfw.so.5.6.2")
@@ -325,6 +596,7 @@ func TestVerifyLinuxLibkrunPrefixRejectsArtifactAndMetadataDrift(t *testing.T) {
 		"libkrunfw_sha256=" + digest(libkrunfwBytes),
 		"kernel_version=linux-6.12.109",
 		"kernel_sha256=5484e552a334e15019f4aeba89e5b58f04651cf2f4e24e04de9f152f1c38e3fa",
+		"kernel_netfilter_patch_sha256=" + netfilterPatch.SHA256,
 		"kernel_image_sha256=" + digest(kernelBytes),
 		"rustc_version=1.90.0",
 		"gcc_version=13.3.0",
@@ -370,6 +642,21 @@ func TestVerifyLinuxLibkrunPrefixRejectsArtifactAndMetadataDrift(t *testing.T) {
 	}
 	if err := verify(); err == nil {
 		t.Fatal("prefix verifier accepted a duplicate pinned metadata field")
+	}
+	tamperedInfo := strings.Replace(
+		info,
+		"kernel_netfilter_patch_sha256="+netfilterPatch.SHA256,
+		"kernel_netfilter_patch_sha256="+strings.Repeat("0", 64),
+		1,
+	)
+	if tamperedInfo == info {
+		t.Fatal("synthetic build metadata does not contain the netfilter patch pin")
+	}
+	if err := os.WriteFile(infoPath, []byte(tamperedInfo), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := verify(); err == nil {
+		t.Fatal("prefix verifier accepted a replaced netfilter patch pin")
 	}
 }
 
