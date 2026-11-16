@@ -76,6 +76,30 @@ read-only too. This relies on the pinned guest crun and a guest kernel with
 `mount_setattr(AT_RECURSIVE)` support; if the guest rejects the option, sandbox
 creation fails closed rather than falling back to a shallow `ro` bind.
 
+### Workspace filesystem semantics
+
+On a Linux host, nerdbox exports each workspace through virtiofs with libkrun's
+default `LinuxComplete` semantics. Host UID/GID, mode bits and xattrs, including
+`system.posix_acl_*`, are passed through; a rootful shim can create host files
+under the calling guest UID/GID and guest users with different non-root UIDs are
+isolated by mode bits. Guest root is not isolated, as in a rootful Docker
+container.
+
+Two limits are platform limits, not mount-rendering choices:
+
+- libkrun 1.19.6 does not negotiate `FUSE_POSIX_ACL`. `getfacl` and `setfacl`
+  see the ACL xattrs, but the guest kernel enforces mode bits only, so ACL-only
+  grants and denies do not affect access.
+- A rootless shim cannot switch to a different guest UID/GID; Linux passthrough
+  returns `EPERM` instead of providing distinct non-root identities.
+
+Linux never applies the macOS-only workspace ownership mapping: libkrun's Linux
+passthrough does not implement `LinuxSimplified` ownership, and selecting it
+would only disable idmapped-mount support. See
+[`docs/LINUX-WORKSPACE-PARITY-2026-11-16.md`](docs/LINUX-WORKSPACE-PARITY-2026-11-16.md)
+for source evidence, live-test environment variables and the local Linux VM
+recipe.
+
 Current limits are explicit:
 
 - `Capabilities.Network` is `false` unless a `runtime.Network` implementation is supplied;

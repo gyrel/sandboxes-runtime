@@ -4,6 +4,10 @@
 
 ### Added
 
+- Add gated Linux live tests (`linux && rheic_linux_workspace`) for workspace
+  ACL/xattr visibility, ownership and UID isolation over nerdbox/virtiofs.
+- Document Linux workspace semantics, the libkrun POSIX ACL limit, rootless
+  UID restriction, and the local VM recipe.
 - Extend the pinned gvproxy patch with a dedicated Git upload-pack forward
   endpoint. It keeps the allocated listener bound to IPv4 loopback and reports
   its actual port; generic forward requests cannot request port zero.
@@ -21,6 +25,12 @@
 
 ### Security and limitations
 
+- Linux workspaces pass through host UID/GID and xattrs, but libkrun 1.19.6
+  does not negotiate `FUSE_POSIX_ACL`: ACL xattrs are visible while the guest
+  kernel enforces mode bits only. Distinct non-root guest identities also need
+  a rootful shim; Linux passthrough returns `EPERM` when an unprivileged shim
+  cannot switch to the guest UID/GID. See
+  `docs/LINUX-WORKSPACE-PARITY-2026-11-16.md`.
 - Recursive read-only workspace mounts require the pinned guest crun with
   `rro` support and a guest kernel with `mount_setattr(AT_RECURSIVE)` (Linux
   5.12 or newer; the pinned guest kernel is 6.12.109).
