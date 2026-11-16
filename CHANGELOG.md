@@ -2,7 +2,11 @@
 
 ## Unreleased
 
+## v0.0.34 — 2026-11-16
+
 ### Added
+
+- Map workspace ownership in macOS guests and add the pinned ARM64 kernel netfilter configuration for Docker workloads.
 
 - Add gated Linux live tests (`linux && rheic_linux_workspace`) for workspace
   ACL/xattr visibility, ownership and UID isolation over nerdbox/virtiofs.
@@ -24,6 +28,9 @@
   non-force tag is created from `main`.
 
 ### Fixed
+
+- Return command-not-found for missing absolute guest executables; bound gateway audit resource usage.
+- Reject unsafe runtime mount specifications and harden runtime input manifest validation.
 
 - Make failed-create cleanup verify the sandbox generation label recorded by
   that create attempt before deleting a container, so a concurrent create for
