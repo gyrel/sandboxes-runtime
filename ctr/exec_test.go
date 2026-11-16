@@ -156,6 +156,8 @@ func TestClassifyStartError(t *testing.T) {
 		ok      bool
 	}{
 		{"OCI runtime exec failed: executable file `missing` not found in $PATH: No such file or directory", 127, true},
+		{"OCI runtime exec failed: executable file `/rheic-nonexistent-command` not found: No such file or directory", 127, true},
+		{"unrelated file not found: No such file or directory", 0, false},
 		{"OCI runtime exec failed: the path `/etc/passwd` exists but it is not executable: Operation not permitted", 127, true},
 		{"synthetic unrelated start failure", 0, false},
 	} {

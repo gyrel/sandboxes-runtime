@@ -139,6 +139,8 @@ func classifyStartError(err error) (int, string, bool) {
 	switch {
 	case strings.Contains(message, "not found in $PATH"):
 		return 127, message, true
+	case strings.Contains(message, "OCI runtime exec failed: executable file `") && strings.HasSuffix(message, "` not found: No such file or directory"):
+		return 127, message, true
 	case strings.Contains(message, "exists but it is not executable"):
 		return 127, message, true
 	default:
