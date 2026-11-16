@@ -60,6 +60,7 @@ git apply "$ROOT/build/patches/nerdbox-proxy-channel.patch"
 git apply "$ROOT/build/patches/nerdbox-linux-shutdown-symbol.patch"
 git apply "$ROOT/build/patches/nerdbox-runtime-asset-search.patch"
 git apply "$ROOT/build/patches/nerdbox-ttrpc-close-once.patch"
+git apply "$ROOT/build/patches/nerdbox-workspace-semantics.patch"
 CGO_ENABLED=1 \
 CGO_CFLAGS="-I$LIBKRUN_PREFIX/include" \
 CGO_LDFLAGS="-L$LIBKRUN_LIBDIR -lkrun" \

@@ -1,0 +1,244 @@
+diff --git a/internal/shim/sandbox/sandbox.go b/internal/shim/sandbox/sandbox.go
+index 868342a..82b9b70 100644
+--- a/internal/shim/sandbox/sandbox.go
++++ b/internal/shim/sandbox/sandbox.go
+@@ -44,6 +44,7 @@ type Filesystem struct {
+ 	Tag       string
+ 	MountPath string
+ 	Readonly  bool
++	Workspace bool
+ }
+ 
+ type DiskFlags uint8
+@@ -105,6 +106,12 @@ func WithProxyChannel(port uint32, socket string) Opt {
+ 	}
+ }
+ 
++func WithWorkspaceFS(tag, mountPath string, readonly bool) Opt {
++	return func(o *Options) {
++		o.Filesystems = append(o.Filesystems, Filesystem{Tag: tag, MountPath: mountPath, Readonly: readonly, Workspace: true})
++	}
++}
++
+ func WithDisk(blockID, mountPath string, flags DiskFlags) Opt {
+ 	return func(o *Options) {
+ 		o.Disks = append(o.Disks, Disk{
+diff --git a/internal/shim/sandbox/vm/vm.go b/internal/shim/sandbox/vm/vm.go
+index 9e7b8f9..1bb5f13 100644
+--- a/internal/shim/sandbox/vm/vm.go
++++ b/internal/shim/sandbox/vm/vm.go
+@@ -100,6 +100,9 @@ func (s *localsandbox) Start(ctx context.Context, opts ...sandbox.Opt) error {
+ 		if fs.Readonly {
+ 			mountOpts = append(mountOpts, vm.WithReadOnly())
+ 		}
++		if fs.Workspace {
++			mountOpts = append(mountOpts, vm.WithWorkspaceOwnership())
++		}
+ 		if err := vmi.AddFS(ctx, fs.Tag, fs.MountPath, mountOpts...); err != nil {
+ 			return err
+ 		}
+diff --git a/internal/shim/task/mount.go b/internal/shim/task/mount.go
+index 0e49882..39be662 100644
+--- a/internal/shim/task/mount.go
++++ b/internal/shim/task/mount.go
+@@ -379,10 +379,11 @@ type bindMounter struct {
+ }
+ 
+ type bindMount struct {
+-	tag      string
+-	hostSrc  string
+-	vmTarget string
+-	readOnly bool
++	tag       string
++	hostSrc   string
++	vmTarget  string
++	readOnly  bool
++	workspace bool
+ }
+ 
+ func (bm *bindMounter) FromBundle(ctx context.Context, b *bundle.Bundle) error {
+@@ -430,11 +431,13 @@ func (bm *bindMounter) FromBundle(ctx context.Context, b *bundle.Bundle) error {
+ 			}
+ 		}
+ 
++		workspace := runtime.GOOS == "darwin" && b.Spec.Annotations[fmt.Sprintf("io.rheic.workspace.%x", hash[:])] == "true"
+ 		transformed := bindMount{
+-			tag:      tag,
+-			hostSrc:  hostSrc,
+-			vmTarget: vmTarget,
+-			readOnly: readOnly,
++			tag:       tag,
++			hostSrc:   hostSrc,
++			vmTarget:  vmTarget,
++			readOnly:  readOnly,
++			workspace: workspace,
+ 		}
+ 
+ 		bm.mounts = append(bm.mounts, transformed)
+@@ -447,7 +450,11 @@ func (bm *bindMounter) FromBundle(ctx context.Context, b *bundle.Bundle) error {
+ func (bm *bindMounter) SandboxOpts() []sandbox.Opt {
+ 	var opts []sandbox.Opt
+ 	for _, m := range bm.mounts {
+-		opts = append(opts, sandbox.WithFS(m.tag, m.hostSrc, m.readOnly))
++		if m.workspace {
++			opts = append(opts, sandbox.WithWorkspaceFS(m.tag, m.hostSrc, m.readOnly))
++		} else {
++			opts = append(opts, sandbox.WithFS(m.tag, m.hostSrc, m.readOnly))
++		}
+ 	}
+ 	return opts
+ }
+diff --git a/internal/shim/task/mount_test.go b/internal/shim/task/mount_test.go
+index 3c6763f..aaa921d 100644
+--- a/internal/shim/task/mount_test.go
++++ b/internal/shim/task/mount_test.go
+@@ -18,6 +18,7 @@ package task
+ 
+ import (
+ 	"context"
++	"crypto/sha256"
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
+@@ -769,3 +770,25 @@ func TestTransformMountsErofs(t *testing.T) {
+ 			"VMDK descriptor must not be regenerated when it already exists")
+ 	})
+ }
++
++func TestWorkspaceSemanticsOnlyForMarkedBind(t *testing.T) {
++	src := t.TempDir()
++	helper := t.TempDir()
++	dest := "/workspace"
++	hash := sha256.Sum256([]byte(dest))
++	b := &bundle.Bundle{Spec: specs.Spec{
++		Annotations: map[string]string{fmt.Sprintf("io.rheic.workspace.%x", hash[:]): "true"},
++		Mounts: []specs.Mount{
++			{Type: "bind", Source: src, Destination: dest, Options: []string{"ro"}},
++			{Type: "bind", Source: helper, Destination: "/tmp/helper", Options: []string{"ro"}},
++		},
++	}}
++	var m bindMounter
++	require.NoError(t, m.FromBundle(context.Background(), b))
++	got := applyOpts(m.SandboxOpts()).Filesystems
++	require.Len(t, got, 2)
++	assert.Equal(t, runtime.GOOS == "darwin", got[0].Workspace)
++	assert.True(t, got[0].Readonly)
++	assert.False(t, got[1].Workspace)
++	assert.True(t, got[1].Readonly)
++}
+diff --git a/internal/vm/libkrun/instance.go b/internal/vm/libkrun/instance.go
+index 49e7260..c376e85 100644
+--- a/internal/vm/libkrun/instance.go
++++ b/internal/vm/libkrun/instance.go
+@@ -215,7 +215,11 @@ func (v *vmInstance) AddFS(ctx context.Context, tag, mountPath string, opts ...v
+ 		o(&mc)
+ 	}
+ 
+-	if err := v.vmc.AddVirtiofs(tag, mountPath, mc.Readonly); err != nil {
++	add := v.vmc.AddVirtiofs
++	if mc.Workspace {
++		add = v.vmc.AddWorkspaceVirtiofs
++	}
++	if err := add(tag, mountPath, mc.Readonly); err != nil {
+ 		return fmt.Errorf("failed to add virtiofs tag:%s mount:%s: %w", tag, mountPath, err)
+ 	}
+ 
+diff --git a/internal/vm/libkrun/krun.go b/internal/vm/libkrun/krun.go
+index 30773e4..4e2fb6c 100644
+--- a/internal/vm/libkrun/krun.go
++++ b/internal/vm/libkrun/krun.go
+@@ -161,6 +161,18 @@ func (vmc *vmcontext) AddVirtiofs(tag, path string, readonly bool) error {
+ 	return nil
+ }
+ 
++// AddWorkspaceVirtiofs selects simplified semantics only for explicitly marked
++// host workspaces. This makes guest ownership per-caller, as in Docker sbx.
++func (vmc *vmcontext) AddWorkspaceVirtiofs(tag, path string, readonly bool) error {
++	if vmc.lib.AddVirtiofs4 == nil {
++		return fmt.Errorf("libkrun workspace semantics unavailable")
++	}
++	if ret := vmc.lib.AddVirtiofs4(vmc.ctxID, tag, path, 0, readonly, 1); ret != 0 {
++		return fmt.Errorf("krun_add_virtiofs4 failed: %d", ret)
++	}
++	return nil
++}
++
+ func (vmc *vmcontext) AddDisk(blockID, path string, readonly bool) error {
+ 	if vmc.lib.AddDisk == nil {
+ 		return fmt.Errorf("libkrun not loaded")
+@@ -268,15 +280,16 @@ type libkrun struct {
+ 	// requests a DAX window size in bytes for the share; 0 means "use the
+ 	// libkrun default" (which is what every call site here passes). Plumb a
+ 	// caller-provided value through MountConfig if/when a use case appears.
+-	AddVirtiofs3       func(ctxID uint32, tag, path string, shmSize uint64, readonly bool) int32          `C:"krun_add_virtiofs3"`
+-	GetShutdownEventfd func(ctxID uint32) int32                                                           `C:"krun_get_shutdown_eventfd"`
+-	SetGpuOptions      func(ctxID, flag uint32) int32                                                     `C:"krun_set_gpu_options"`
+-	SetGvproxyPath     func(ctxID uint32, path string) int32                                              `C:"krun_set_gvproxy_path"`
+-	SetNetMac          func(ctxID uint32, mac []uint8) int32                                              `C:"krun_set_net_mac"`
+-	AddDisk            func(ctxID uint32, blockId, path string, readonly bool) int32                      `C:"krun_add_disk"`
+-	AddDisk2           func(ctxID uint32, blockId, path string, diskFmt uint32, readonly bool) int32      `C:"krun_add_disk2"`
+-	AddNetUnixstream   func(ctxID uint32, path string, fd int, mac []uint8, features, flags uint32) int32 `C:"krun_add_net_unixstream"`
+-	AddNetUnixgram     func(ctxID uint32, path string, fd int, mac []uint8, features, flags uint32) int32 `C:"krun_add_net_unixgram"`
++	AddVirtiofs4       func(ctxID uint32, tag, path string, shmSize uint64, readonly bool, semantics uint32) int32 `C:"krun_add_virtiofs4"`
++	AddVirtiofs3       func(ctxID uint32, tag, path string, shmSize uint64, readonly bool) int32                   `C:"krun_add_virtiofs3"`
++	GetShutdownEventfd func(ctxID uint32) int32                                                                    `C:"krun_get_shutdown_eventfd"`
++	SetGpuOptions      func(ctxID, flag uint32) int32                                                              `C:"krun_set_gpu_options"`
++	SetGvproxyPath     func(ctxID uint32, path string) int32                                                       `C:"krun_set_gvproxy_path"`
++	SetNetMac          func(ctxID uint32, mac []uint8) int32                                                       `C:"krun_set_net_mac"`
++	AddDisk            func(ctxID uint32, blockId, path string, readonly bool) int32                               `C:"krun_add_disk"`
++	AddDisk2           func(ctxID uint32, blockId, path string, diskFmt uint32, readonly bool) int32               `C:"krun_add_disk2"`
++	AddNetUnixstream   func(ctxID uint32, path string, fd int, mac []uint8, features, flags uint32) int32          `C:"krun_add_net_unixstream"`
++	AddNetUnixgram     func(ctxID uint32, path string, fd int, mac []uint8, features, flags uint32) int32          `C:"krun_add_net_unixgram"`
+ 
+ 	/*
+ 		All functions (As of July 2025)
+diff --git a/internal/vm/libkrun/krun_test.go b/internal/vm/libkrun/krun_test.go
+index e527c34..81a2ae9 100644
+--- a/internal/vm/libkrun/krun_test.go
++++ b/internal/vm/libkrun/krun_test.go
+@@ -123,3 +123,24 @@ func TestAddVirtiofs_LibraryNotLoaded(t *testing.T) {
+ 		t.Fatalf("expected error when AddVirtiofs3 is not bound")
+ 	}
+ }
++
++func TestWorkspaceVirtiofsSemantics(t *testing.T) {
++	var calls int
++	vmc := &vmcontext{lib: &libkrun{AddVirtiofs4: func(_ uint32, tag, path string, _ uint64, readonly bool, semantics uint32) int32 {
++		calls++
++		if tag != "workspace" || path != "/src" || !readonly || semantics != 1 {
++			t.Fatalf("unexpected workspace arguments %q %q %v %d", tag, path, readonly, semantics)
++		}
++		return 0
++	}}}
++	if err := vmc.AddWorkspaceVirtiofs("workspace", "/src", true); err != nil {
++		t.Fatal(err)
++	}
++	if calls != 1 {
++		t.Fatalf("calls = %d", calls)
++	}
++	vmc.lib.AddVirtiofs4 = nil
++	if err := vmc.AddWorkspaceVirtiofs("workspace", "/src", true); err == nil {
++		t.Fatal("missing symbol must fail closed")
++	}
++}
+diff --git a/pkg/vm/vm.go b/pkg/vm/vm.go
+index df13f67..11fea64 100644
+--- a/pkg/vm/vm.go
++++ b/pkg/vm/vm.go
+@@ -104,6 +104,9 @@ type MountConfig struct {
+ 	// Readonly mounts the filesystem or disk read-only inside the guest.
+ 	Readonly bool
+ 
++	// Workspace selects guest-caller ownership semantics for a host workspace.
++	Workspace bool
++
+ 	// Vmdk indicates that the backing file is a VMDK image rather than a
+ 	// raw block device. Only meaningful for [Instance.AddDisk].
+ 	Vmdk bool
+@@ -246,3 +249,6 @@ func WithNICFlags(flags uint32) NetworkOpt {
+ 		o.Flags = flags
+ 	}
+ }
++
++// WithWorkspaceOwnership enables per-caller ownership on an explicit host workspace.
++func WithWorkspaceOwnership() MountOpt { return func(c *MountConfig) { c.Workspace = true } }

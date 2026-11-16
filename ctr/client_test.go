@@ -2,6 +2,7 @@ package ctr
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -956,5 +957,33 @@ func TestRunRunsTrustedHelperAsRoot(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(runner.calls[0], " "), "--user") {
 		t.Fatal("agent workload unexpectedly forced to root")
+	}
+}
+
+func TestCreateMarksOnlyWorkspacesForOwnershipSemantics(t *testing.T) {
+	runner := &fakeRunner{}
+	opts := testArtifactOptions(t)
+	opts.Image = "img"
+	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend.client.runner = runner
+	helper := filepath.Join(t.TempDir(), "helper")
+	if err := os.WriteFile(helper, []byte("synthetic"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := runtime.Config{Name: "dev", Image: "img", ProxyPort: 1027, ProxySocket: filepath.Join(os.TempDir(), "dev.proxy.sock"), Workspaces: []runtime.Workspace{{Path: "/host/work", GuestPath: "/guest/work", ReadOnly: true}}}
+	if _, err := backend.CreateWithProxy(context.Background(), &cfg, helper, 3128, "api.openai.com"); err != nil {
+		t.Fatal(err)
+	}
+	calls := fmt.Sprint(runner.calls)
+	workHash := sha256.Sum256([]byte("/guest/work"))
+	helperHash := sha256.Sum256([]byte("/tmp/rheic-proxy-helper"))
+	if !strings.Contains(calls, fmt.Sprintf("io.rheic.workspace.%x=true", workHash[:])) {
+		t.Fatal("workspace annotation missing")
+	}
+	if strings.Contains(calls, fmt.Sprintf("io.rheic.workspace.%x", helperHash[:])) {
+		t.Fatal("proxy helper must not be marked as workspace")
 	}
 }

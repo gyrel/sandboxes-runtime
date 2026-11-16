@@ -195,6 +195,17 @@ After archiving a capped file, restart its gateway to resume audit recording.
   and `rootfs` subtrees of that task's validated bundle, recovering those
   mounts after abrupt shim death. Same-UID bundle-path races remain inside the
   host user's trust boundary.
+- `patches/nerdbox-workspace-semantics.patch` — switches only explicitly
+  annotated workspace bind mounts on macOS to libkrun's simplified ownership semantics.
+  The guest sees the caller as owner, matching Docker's local workspace behavior;
+  rootfs and helper mounts retain their prior semantics. Read-only remains a
+  host-edge and guest mount restriction. This mode does not preserve distinct
+  guest owners or xattrs within the workspace; host access still runs as the
+  host shim user. On a writable direct workspace, guest operations such as chmod
+  can change host file metadata. The shim requires libkrun with
+  `krun_add_virtiofs4`; it fails if the symbol is missing. Local macOS/ARM64 VM
+  checks cover synthetic read/write and read-only mounts only; Linux acceptance,
+  broader filesystem operations and independent security review remain open.
 - `patches/nerdbox-network-route-only.patch` — asks the Linux guest networking
   helper for only `NETLINK_ROUTE`, the family it uses for veth, address, and
   route operations. This avoids opening unused XFRM and netfilter families

@@ -71,6 +71,10 @@ patches:
     file: patches/nerdbox-ttrpc-close-once.patch
     sha256: 4bcbb9dc9eea8c032d90cfbf5fd286ab7e21071872e9defa32abb766071da5c4
     status: experimental
+  nerdbox-workspace-semantics:
+    file: patches/nerdbox-workspace-semantics.patch
+    sha256: 7f1f25d606894a1009946042ef99b0c0cf2bb9b597ee0bde89f71f70c46a8f02
+    status: experimental
   nerdbox-network-route-only:
     file: patches/nerdbox-network-route-only.patch
     sha256: 521a3370d53515be4f07404b67124e57a387fb62b6c97368d1053fc15ba3f569
