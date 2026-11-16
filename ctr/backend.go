@@ -216,6 +216,10 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	return runtime.Handle{ID: id, FIFODir: fifoDir}, nil
 }
 
+// workspaceAnnotations marks workspace mounts for the shim's macOS-only
+// caller-ownership mode. Linux deliberately stays on libkrun's LinuxComplete
+// passthrough, which preserves host UID/GID and xattrs; the annotation is
+// ignored there so helper and rootfs mounts never inherit the macOS mode.
 func workspaceAnnotations(mounts []Mount) []string {
 	annotations := make([]string, 0, len(mounts))
 	for _, workspace := range mounts {

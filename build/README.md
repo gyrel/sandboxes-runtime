@@ -206,6 +206,9 @@ After archiving a capped file, restart its gateway to resume audit recording.
   `krun_add_virtiofs4`; it fails if the symbol is missing. Local macOS/ARM64 VM
   checks cover synthetic read/write and read-only mounts only; Linux acceptance,
   broader filesystem operations and independent security review remain open.
+  Linux deliberately stays on `LinuxComplete` passthrough; see the repository
+  `docs/LINUX-WORKSPACE-PARITY-2026-11-16.md` for ownership, xattr, ACL and
+  rootless findings, plus the gated live-test recipe.
 - `patches/nerdbox-network-route-only.patch` — asks the Linux guest networking
   helper for only `NETLINK_ROUTE`, the family it uses for veth, address, and
   route operations. This avoids opening unused XFRM and netfilter families
