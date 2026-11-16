@@ -106,6 +106,13 @@ file that no longer matches the checked-in manifest or patches.
 The gvproxy patch is experimental until matching integration and security
 tests are recorded in the plan:
 
+Audit is best effort: gateway decisions use a bounded 256-record queue and a
+16 MiB per-file cap. `audit-incomplete` entries report queue overflow or the
+size limit; no further records are written after the size cap. Flushes are
+periodic, so abrupt termination can lose recent events. Operators should
+monitor these markers and manage audit files according to their retention needs.
+After archiving a capped file, restart its gateway to resume audit recording.
+
 - `patches/gvproxy-egress-policy-v2.patch` — default-deny egress policy,
   domain-aware DNS authorization with a bounded resolved-IP cache, revision
   reload, audit, flow revocation, bearer authentication on the host services

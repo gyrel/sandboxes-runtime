@@ -3503,10 +3503,10 @@ index 613b32a..0ffa23a 100644
  type Protocol string
 diff --git a/pkg/types/egress_policy.go b/pkg/types/egress_policy.go
 new file mode 100644
-index 0000000..8bc711a
+index 00000000..d9aadf8e
 --- /dev/null
 +++ b/pkg/types/egress_policy.go
-@@ -0,0 +1,1152 @@
+@@ -0,0 +1,1256 @@
 +package types
 +
 +import (
@@ -3860,9 +3860,25 @@ index 0000000..8bc711a
 +	return err
 +}
 +
++// Audit records are best effort under load. Network decisions never wait for
++// storage, and the file and in-memory queue both have fixed upper bounds.
++const (
++	egressAuditQueueSize           = 256
++	egressAuditMaxBytes      int64 = 16 << 20
++	egressAuditMarkerReserve int64 = 256
++)
++
 +type egressAudit struct {
-+	mu   sync.Mutex
-+	file *os.File
++	mu      sync.Mutex
++	file    *os.File
++	queue   chan EgressDecision
++	done    chan struct{}
++	closed  bool
++	dropped uint64
++	err     error
++	size    int64
++	full    bool
++	dirty   bool
 +}
 +
 +func openEgressAudit(path string) (*egressAudit, error) {
@@ -3873,7 +3889,14 @@ index 0000000..8bc711a
 +	if err != nil {
 +		return nil, fmt.Errorf("cannot open egress audit log %q: %w", path, err)
 +	}
-+	return &egressAudit{file: file}, nil
++	info, err := file.Stat()
++	if err != nil {
++		_ = file.Close()
++		return nil, fmt.Errorf("cannot stat egress audit log %q: %w", path, err)
++	}
++	a := &egressAudit{file: file, queue: make(chan EgressDecision, egressAuditQueueSize), done: make(chan struct{}), size: info.Size()}
++	go a.run()
++	return a, nil
 +}
 +
 +func (a *egressAudit) record(decision EgressDecision) error {
@@ -3881,17 +3904,93 @@ index 0000000..8bc711a
 +		return nil
 +	}
 +	decision.Time = time.Now().UTC().Format(time.RFC3339Nano)
-+	line, err := json.Marshal(decision)
-+	if err != nil {
-+		return err
-+	}
-+	line = append(line, '\n')
 +	a.mu.Lock()
 +	defer a.mu.Unlock()
-+	if _, err := a.file.Write(line); err != nil {
-+		return err
++	if a.closed {
++		return fmt.Errorf("egress audit closed")
 +	}
-+	return a.file.Sync()
++	select {
++	case a.queue <- decision:
++	default:
++		a.dropped++
++	}
++	return nil
++}
++
++// write is called only by the worker. Reserve space for a final truncation
++// marker so readers can distinguish a capped log from a complete one.
++func (a *egressAudit) write(value any) {
++	if a.err != nil || a.full {
++		return
++	}
++	line, err := json.Marshal(value)
++	if err != nil {
++		a.err = err
++		return
++	}
++	line = append(line, '\n')
++	if a.size+int64(len(line)) > egressAuditMaxBytes-egressAuditMarkerReserve {
++		a.full = true
++		line, _ = json.Marshal(EgressDecision{Time: time.Now().UTC().Format(time.RFC3339Nano), Action: "audit-incomplete", Reason: "size-limit"})
++		line = append(line, '\n')
++		if a.size+int64(len(line)) > egressAuditMaxBytes {
++			fmt.Fprintln(os.Stderr, "egress audit: existing log already exceeds size limit")
++			return
++		}
++	}
++	n, err := a.file.Write(line)
++	a.size += int64(n)
++	if n > 0 {
++		a.dirty = true
++	}
++	if err == nil && n != len(line) {
++		err = io.ErrShortWrite
++	}
++	if err != nil {
++		a.err = err
++		fmt.Fprintf(os.Stderr, "egress audit write failed: %v\n", err)
++	}
++}
++
++func (a *egressAudit) reportDropped() {
++	a.mu.Lock()
++	dropped := a.dropped
++	a.dropped = 0
++	a.mu.Unlock()
++	if dropped != 0 {
++		a.write(EgressDecision{Time: time.Now().UTC().Format(time.RFC3339Nano), Action: "audit-incomplete", Reason: fmt.Sprintf("queue-full: dropped %d", dropped)})
++	}
++}
++
++func (a *egressAudit) run() {
++	defer close(a.done)
++	ticker := time.NewTicker(time.Second)
++	defer ticker.Stop()
++	for {
++		select {
++		case decision, ok := <-a.queue:
++			if !ok {
++				a.reportDropped()
++				if err := a.file.Sync(); a.err == nil {
++					a.err = err
++				}
++				if err := a.file.Close(); a.err == nil {
++					a.err = err
++				}
++				return
++			}
++			a.write(decision)
++		case <-ticker.C:
++			a.reportDropped()
++			if a.dirty && a.err == nil {
++				if err := a.file.Sync(); err != nil {
++					a.err = err
++					fmt.Fprintf(os.Stderr, "egress audit sync failed: %v\n", err)
++				}
++				a.dirty = false
++			}
++		}
++	}
 +}
 +
 +func (a *egressAudit) close() error {
@@ -3899,8 +3998,13 @@ index 0000000..8bc711a
 +		return nil
 +	}
 +	a.mu.Lock()
-+	defer a.mu.Unlock()
-+	return a.file.Close()
++	if !a.closed {
++		a.closed = true
++		close(a.queue)
++	}
++	a.mu.Unlock()
++	<-a.done
++	return a.err
 +}
 +
 +// EgressPolicyHolder provides atomic replacement of the active policy. A nil
@@ -4661,10 +4765,10 @@ index 0000000..8bc711a
 +}
 diff --git a/pkg/types/egress_policy_test.go b/pkg/types/egress_policy_test.go
 new file mode 100644
-index 0000000..0dde0d2
+index 00000000..9fdd4c72
 --- /dev/null
 +++ b/pkg/types/egress_policy_test.go
-@@ -0,0 +1,738 @@
+@@ -0,0 +1,833 @@
 +package types
 +
 +import (
@@ -4672,6 +4776,7 @@ index 0000000..0dde0d2
 +	"os"
 +	"path/filepath"
 +	"strings"
++	"sync"
 +	"testing"
 +	"time"
 +)
@@ -4970,6 +5075,9 @@ index 0000000..0dde0d2
 +		t.Fatalf("deny must win over allow, got label %q", got)
 +	}
 +	holder.AuditTCP("192.0.2.4", 443, false, "denied-by-rule", denyRule)
++	if err := holder.Close(); err != nil {
++		t.Fatal(err)
++	}
 +	content, err := os.ReadFile(path)
 +	if err != nil {
 +		t.Fatal(err)
@@ -5025,6 +5133,9 @@ index 0000000..0dde0d2
 +		t.Fatal("established flow was not closed after revocation")
 +	}
 +	holder.Untrack(id)
++	if err := holder.Close(); err != nil {
++		t.Fatal(err)
++	}
 +	content, err := os.ReadFile(path)
 +	if err != nil {
 +		t.Fatal(err)
@@ -5402,6 +5513,94 @@ index 0000000..0dde0d2
 +		}
 +		_ = compiled.MatchString(name)
 +	})
++}
++
++func TestEgressAuditQueueOverflowIsReported(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "audit.jsonl")
++	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
++	if err != nil {
++		t.Fatal(err)
++	}
++	a := &egressAudit{file: file, queue: make(chan EgressDecision, 1), done: make(chan struct{})}
++	if err := a.record(EgressDecision{Action: "allow"}); err != nil {
++		t.Fatal(err)
++	}
++	if err := a.record(EgressDecision{Action: "deny"}); err != nil {
++		t.Fatal(err)
++	}
++	go a.run()
++	if err := a.close(); err != nil {
++		t.Fatal(err)
++	}
++	content, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, want := range []string{`"action":"allow"`, `"reason":"queue-full: dropped 1"`} {
++		if !strings.Contains(string(content), want) {
++			t.Fatalf("missing %s in %s", want, content)
++		}
++	}
++	if err := a.record(EgressDecision{}); err == nil {
++		t.Fatal("record after close succeeded")
++	}
++}
++
++func TestEgressAuditFileCapMarksIncomplete(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "audit.jsonl")
++	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := file.Truncate(egressAuditMaxBytes - egressAuditMarkerReserve); err != nil {
++		t.Fatal(err)
++	}
++	a := &egressAudit{file: file, queue: make(chan EgressDecision, 1), done: make(chan struct{}), size: egressAuditMaxBytes - egressAuditMarkerReserve}
++	go a.run()
++	if err := a.record(EgressDecision{Action: "deny"}); err != nil {
++		t.Fatal(err)
++	}
++	if err := a.close(); err != nil {
++		t.Fatal(err)
++	}
++	info, err := os.Stat(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if info.Size() > egressAuditMaxBytes {
++		t.Fatalf("audit exceeds limit: %d", info.Size())
++	}
++	content, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !strings.Contains(string(content), `"reason":"size-limit"`) {
++		t.Fatal("missing size limit marker")
++	}
++}
++
++func TestEgressAuditConcurrentClose(t *testing.T) {
++	a, err := openEgressAudit(filepath.Join(t.TempDir(), "audit.jsonl"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	var wg sync.WaitGroup
++	for i := 0; i < 8; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for j := 0; j < 200; j++ {
++				_ = a.record(EgressDecision{Action: "deny"})
++			}
++		}()
++	}
++	if err := a.close(); err != nil {
++		t.Fatal(err)
++	}
++	wg.Wait()
++	if err := a.close(); err != nil {
++		t.Fatal(err)
++	}
 +}
 diff --git a/pkg/virtualnetwork/ipv6_publish_test.go b/pkg/virtualnetwork/ipv6_publish_test.go
 new file mode 100644
