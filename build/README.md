@@ -91,8 +91,8 @@ file that no longer matches the checked-in manifest or patches.
   recorded in `manifest.yaml`
 - crun `1.30.1` Linux ARM64, signed upstream release asset; the build recipe
   checks the pinned SHA-256 and reported version before embedding it
-- ARM64 EROFS rootfs base from the pinned nerdbox source, SHA-256 in
-  `manifest.yaml`
+- ARM64 EROFS rootfs assembled from the pinned nerdbox `vminitd` source and
+  the pinned crun binary, with a fixed filesystem inventory and metadata
 - libkrun `1.19.6`, commit `227b2de6ed323fe180e02f871c5f325a90c13cc2`
 - libkrunfw `5.6.2`, commit `f14ac64ca8a04c6c9d76cac1c61ee050809c88c9`
 - Linux ARM64 kernel source `6.12.109`, SHA-256 in `manifest.yaml`
@@ -260,12 +260,11 @@ mkfs.erofs -b4096 -zlz4 /path/to/nerdbox-rootfs.erofs /path/to/guest-rootfs
 ```
 
 The Linux guest root filesystem must contain the vminitd built from the pinned
-source plus the route-only netlink patch. Rebuild the EROFS image from the
-manifest-pinned base with Go 1.27.4 and erofs-utils 1.7.1:
+source plus the route-only netlink patch. Build the EROFS image directly from
+those pinned inputs with Go 1.27.4 and erofs-utils 1.7.1:
 
 ```sh
 NERDBOX_SRC=/path/to/clean/nerdbox-v0.2.5 \
-BASE_ROOTFS=/path/to/nerdbox-rootfs-arm64.erofs \
 CRUN_BINARY=/path/to/verified/crun-1.30.1-linux-arm64-disable-systemd \
 OUT=/path/to/nerdbox-rootfs-arm64-rheic.erofs \
   scripts/build-nerdbox-linux-rootfs.sh
@@ -273,14 +272,13 @@ OUT=/path/to/nerdbox-rootfs-arm64-rheic.erofs \
 
 The crun binary must match the manifest-pinned SHA-256 and report version
 1.30.1. Verify the upstream release signature before use. The script verifies
-the source commit, base rootfs and patch digests; it refuses
-to overwrite an existing output. It builds a static ARM64 `vminitd`, preserves
-the base file timestamps, assigns the replacement `vminitd` the base binary's
-timestamp, normalizes EROFS inode timestamps to that pinned timestamp, uses a
-fixed EROFS UUID and root ownership, then extracts the result to verify the
-embedded binary. This intentionally normalizes timestamps in the immutable
-system rootfs for reproducible EROFS output. Do not use the removed broad
-cgroup/capability patch.
+the source commit, crun and patch digests; it refuses to overwrite an existing
+output. It builds a static ARM64 `vminitd`, creates only the required mountpoint
+directories, `/var/run` symlink and two guest binaries, then writes an EROFS
+image with a fixed UUID, 4096-byte blocks, epoch timestamp and root ownership.
+It extracts the result to verify the embedded binaries. The rootfs no longer
+depends on an unavailable, separately generated base image. Do not use the
+removed broad cgroup/capability patch.
 
 ```sh
 # gvproxy

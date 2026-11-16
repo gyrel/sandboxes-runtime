@@ -1,15 +1,14 @@
 #!/bin/sh
-# Rebuild the pinned nerdbox ARM64 guest rootfs with the route-only vminitd fix.
+# Build the ARM64 guest rootfs from an exact two-binary inventory.
 set -eu
+umask 022
 
 : "${NERDBOX_SRC:?set NERDBOX_SRC to a clean nerdbox v0.2.5 checkout}"
-: "${BASE_ROOTFS:?set BASE_ROOTFS to the pinned upstream ARM64 EROFS rootfs}"
 : "${CRUN_BINARY:?set CRUN_BINARY to the verified crun 1.30.1 linux-arm64-disable-systemd binary}"
 : "${OUT:?set OUT to a path that does not exist}"
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 NERDBOX_COMMIT=28c86e8e16c62a08079531ebe99e24a7bdad3d62
-BASE_ROOTFS_SHA256=bb7b4ba4df5047d67d0af0ffc9c92b891d8553d4c78a30c14219d079dd003cc3
 CRUN_SHA256=6ac05ea41343cf91b12832c69f9a2a8c6dc5380032f4c0e02a46cc6aba8804f5
 PATCH_SHA256=521a3370d53515be4f07404b67124e57a387fb62b6c97368d1053fc15ba3f569
 ROOTFS_UUID=2f7d7270-8b51-4db0-9fd9-f22cbf109ec2
@@ -34,17 +33,8 @@ if [ -e "$OUT" ] || [ -L "$OUT" ]; then
 	echo "refusing to overwrite existing rootfs output: $OUT" >&2
 	exit 1
 fi
-if [ ! -f "$BASE_ROOTFS" ] || [ -L "$BASE_ROOTFS" ]; then
-	echo "BASE_ROOTFS must be a regular, non-symlink file" >&2
-	exit 1
-fi
 if [ ! -f "$CRUN_BINARY" ] || [ -L "$CRUN_BINARY" ] || [ ! -x "$CRUN_BINARY" ]; then
 	echo "CRUN_BINARY must be an executable regular, non-symlink file" >&2
-	exit 1
-fi
-actual_base_sha=$(sha256sum "$BASE_ROOTFS" | awk '{print $1}')
-if [ "$actual_base_sha" != "$BASE_ROOTFS_SHA256" ]; then
-	echo "base rootfs checksum mismatch: got $actual_base_sha" >&2
 	exit 1
 fi
 actual_crun_sha=$(sha256sum "$CRUN_BINARY" | awk '{print $1}')
@@ -85,16 +75,14 @@ GOWORK=off GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
 	-tags 'osusergo netgo static_build no_grpc' \
 	-ldflags='-s -w -buildid=' -o "$WORK/vminitd" ./cmd/vminitd
 
-mkdir "$WORK/rootfs"
-fsck.erofs --extract="$WORK/rootfs" "$BASE_ROOTFS"
-if [ ! -f "$WORK/rootfs/sbin/crun" ] || [ ! -f "$WORK/rootfs/sbin/vminitd" ]; then
-	echo "base EROFS rootfs is missing the pinned nerdbox guest binaries" >&2
-	exit 1
-fi
-base_vminitd_mtime=$(stat -c %Y "$WORK/rootfs/sbin/vminitd")
+mkdir -p "$WORK/rootfs/dev" "$WORK/rootfs/etc" "$WORK/rootfs/proc" \
+	"$WORK/rootfs/run" "$WORK/rootfs/sbin" "$WORK/rootfs/sys" \
+	"$WORK/rootfs/tmp" "$WORK/rootfs/var"
+ln -s /run "$WORK/rootfs/var/run"
+chmod 1777 "$WORK/rootfs/tmp"
 install -m 0755 "$WORK/vminitd" "$WORK/rootfs/sbin/vminitd"
 install -m 0755 "$CRUN_BINARY" "$WORK/rootfs/sbin/crun"
-mkfs.erofs -zlz4 --all-root -U "$ROOTFS_UUID" -T "$base_vminitd_mtime" "$WORK/rootfs.erofs" "$WORK/rootfs"
+mkfs.erofs -b4096 -zlz4 --all-root -U "$ROOTFS_UUID" -T 0 "$WORK/rootfs.erofs" "$WORK/rootfs"
 
 mkdir "$WORK/verify"
 fsck.erofs --extract="$WORK/verify" "$WORK/rootfs.erofs"

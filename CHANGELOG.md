@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## v0.0.35 — 2026-11-17
+
+### Fixed
+
+- Build the Linux ARM64 guest EROFS rootfs directly from the pinned nerdbox
+  source and crun binary. The recipe no longer requires an unavailable upstream
+  base image. Its file inventory, UUID, timestamp, block size and ownership are
+  fixed; two clean builds with Go 1.27.4 and erofs-utils 1.7.1 produced identical
+  images.
+
+### Security and limitations
+
+- The rootfs recipe verifies the pinned source, patch and crun digests and
+  refuses to overwrite an existing output. Runtime assets still require an
+  assembled and verified bundle before launch; this source tag does not publish
+  a kernel, shim or rootfs binary.
+
 ## v0.0.34 — 2026-11-16
 
 ### Added
