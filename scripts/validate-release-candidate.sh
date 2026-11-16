@@ -21,7 +21,7 @@ if [[ "$head" != "$GITHUB_SHA" ]]; then
   printf 'release validation SHA does not match checked out commit\n' >&2
   exit 1
 fi
-first_heading=$(awk '/^## / { print; exit }' "$root/CHANGELOG.md")
+first_heading=$(awk '/^## v[0-9]/ { print; exit }' "$root/CHANGELOG.md")
 case "$first_heading" in
   "## v$version"|"## v$version "*) ;;
   *)
