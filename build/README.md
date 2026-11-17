@@ -7,6 +7,26 @@ This directory pins the native runtime inputs used by the containerd/nerdbox
 adapter. The manifest is authoritative; the patches are checked by the
 `internal/manifest` test.
 
+## Native release archives
+
+Starting with v0.0.36, the release includes `rheic-runtime-v0.0.36-linux-arm64.tar.gz`
+and `rheic-runtime-v0.0.36-darwin-arm64.tar.gz`. Each archive contains a
+`bundle.json` with the target platform, required roles, exact file inventory,
+sizes, and SHA-256 digests. After checking the published archive checksum,
+extract into a private directory and run:
+
+```sh
+go run ./cmd/runtime-bundle verify --root /path/to/extracted-bundle --platform linux/arm64
+```
+
+Use `darwin/arm64` for the macOS archive. `scripts/package-native-bundle.py`
+creates the deterministic tarball after the bundle manifest has been verified.
+The archive includes containerd and ctr for a self-contained runtime deployment;
+the adapter's configured digest policy still governs the shim and gvproxy it
+launches. The macOS dylibs are relocated to `@loader_path`, ad hoc signed, and
+must be loaded from the archive's `lib` directory. Native dependencies and
+runtime behavior must be evaluated on the target host.
+
 ## Runtime artifact digests
 
 `manifest.yaml` records build inputs. `digests.yaml` is the runtime trust
@@ -390,7 +410,7 @@ bundle.
 The bundle package and runtime-bundle command create and check a strict
 per-file inventory. They reject a manifest that declares a different requested platform, plus missing,
 changed, symlinked, and undeclared files. `required-roles` inventories require
-containerd, ctr, nerdbox shim, gvproxy, libkrun, kernel, and guest rootfs; this is
+containerd, ctr, nerdbox shim, gvproxy, libkrun, libkrunfw, kernel, and guest rootfs; this is
 only a minimum role subset and does not mean the runtime package is complete. A
 partial inventory is experimental and requires the caller to opt in explicitly.
 Platform labels are not inferred from binary bytes. The contract CI workflow uses

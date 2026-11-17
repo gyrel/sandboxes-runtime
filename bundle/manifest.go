@@ -27,7 +27,7 @@ const (
 	maxManifest   = 1 << 20
 )
 
-var requiredComponents = []string{"containerd", "ctr", "nerdbox-shim", "gvproxy", "libkrun", "kernel", "guest-rootfs"}
+var requiredComponents = []string{"containerd", "ctr", "nerdbox-shim", "gvproxy", "libkrun", "libkrunfw", "kernel", "guest-rootfs"}
 
 var openBundleRootTestHook func()
 
