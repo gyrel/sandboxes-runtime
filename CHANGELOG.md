@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## v0.0.36 — 2026-11-17
+
+### Added
+
+- Publish complete Linux ARM64 and macOS ARM64 native runtime archives with
+  containerd, ctr, the patched nerdbox shim and gvproxy, libkrun, libkrunfw,
+  the patched ARM64 kernel, and the reproducible EROFS guest rootfs.
+- Add a strict bundle inventory, platform check, SHA-256 verification, and
+  deterministic archive packaging. Both platform bundles passed a live ARM64
+  guest task and post-task inventory check.
+
+### Security and limitations
+
+- The bundle manifest is a content inventory, not a signature. Release archive
+  SHA-256 checksums are published separately. macOS libraries include relocated
+  Homebrew dependencies and ad hoc code signatures; they are not Apple
+  notarized. The macOS libkrun and graphics dependencies were not rebuilt from
+  source in this release.
+- The live guest task checks VM boot and basic lifecycle. It does not establish
+  full Docker baseline or network-policy parity.
+
 ## v0.0.35 — 2026-11-17
 
 ### Fixed

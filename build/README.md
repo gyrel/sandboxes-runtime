@@ -7,6 +7,26 @@ This directory pins the native runtime inputs used by the containerd/nerdbox
 adapter. The manifest is authoritative; the patches are checked by the
 `internal/manifest` test.
 
+## Native release archives
+
+Starting with v0.0.36, the release includes `rheic-runtime-v0.0.36-linux-arm64.tar.gz`
+and `rheic-runtime-v0.0.36-darwin-arm64.tar.gz`. Each archive contains a
+`bundle.json` with the target platform, required roles, exact file inventory,
+sizes, and SHA-256 digests. After checking the published archive checksum,
+extract into a private directory and run:
+
+```sh
+go run ./cmd/runtime-bundle verify --root /path/to/extracted-bundle --platform linux/arm64
+```
+
+Use `darwin/arm64` for the macOS archive. `scripts/package-native-bundle.py`
+creates the deterministic tarball after the bundle manifest has been verified.
+The archive includes containerd and ctr for a self-contained runtime deployment;
+the adapter's configured digest policy still governs the shim and gvproxy it
+launches. The macOS dylibs are relocated to `@loader_path`, ad hoc signed, and
+must be loaded from the archive's `lib` directory. Native dependencies and
+runtime behavior must be evaluated on the target host.
+
 ## Runtime artifact digests
 
 `manifest.yaml` records build inputs. `digests.yaml` is the runtime trust
@@ -375,3 +395,39 @@ environment. The QEMU source archive is signed upstream; verify its signature
 and the pinned SHA-512 before applying the patch. The native Windows build
 recipe and signed release artifacts are still outstanding; do not substitute
 an unpatched system QEMU binary.
+
+## Runtime bundle integrity status
+
+The repository does not yet produce or publish a complete runtime bundle.
+Pinned source and patch versions are build inputs, not artifact provenance.
+Darwin/arm64 and Linux/arm64 are the only platforms named by the current
+source manifest; the existence of these entries does not mean either complete
+payload is currently reproducible from one checked-in build recipe. In
+particular, the current scripts build the nerdbox shim and gvproxy, but do not
+assemble containerd, ctr, libkrun, kernel, and guest rootfs into a release
+bundle.
+
+The bundle package and runtime-bundle command create and check a strict
+per-file inventory. They reject a manifest that declares a different requested platform, plus missing,
+changed, symlinked, and undeclared files. `required-roles` inventories require
+containerd, ctr, nerdbox shim, gvproxy, libkrun, libkrunfw, kernel, and guest rootfs; this is
+only a minimum role subset and does not mean the runtime package is complete. A
+partial inventory is experimental and requires the caller to opt in explicitly.
+Platform labels are not inferred from binary bytes. The contract CI workflow uses
+synthetic fixtures only and publishes no artifacts.
+
+The `required-roles` label checks a minimum declared component subset and file
+consistency only. It does not prove the binaries execute, that a VM boots, or that isolation and
+cleanup work. The verifier pins the opened root against a path replacement during open, but
+assumes a private, quiescent staging directory for the remaining inventory and
+hash reads. It is not a defense against a concurrent writer with the same user
+identity.
+
+bundle.json is not a trust anchor. Its hashes detect mismatch only when the
+manifest itself is already trusted. Future runtime installers must first
+verify the enclosing release archive's GitHub artifact attestation against
+this repository, then verify the extracted inventory and requested platform.
+Do not treat a co-located checksum, this verifier alone, or an ad-hoc macOS
+code signature as provenance. No runtime package or install path is approved
+for production until a pinned per-platform build and attested release workflow
+exist and are validated.
