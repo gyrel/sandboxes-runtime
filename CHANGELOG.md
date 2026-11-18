@@ -65,6 +65,14 @@
   workflow and the candidate validation controls before an immutable,
   non-force tag is created from `main`.
 
+### Security
+
+- Re-authorize host-loopback NAT translations on every TCP and UDP connection
+  against the current egress-policy revision. A host-services entry installed at
+  startup from an exact-host allow no longer remains usable after the policy is
+  widened to a broad CIDR allow; explicit host-services opt-in still bypasses
+  the per-connection exact-host check. Adds a policy-revision regression test.
+
 ### Fixed
 
 - Return command-not-found for missing absolute guest executables; bound gateway audit resource usage.
