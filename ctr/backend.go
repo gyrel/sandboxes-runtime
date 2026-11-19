@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	runtime "github.com/rheic/sandboxes-runtime"
@@ -37,6 +38,9 @@ type Backend struct {
 	fifoDir  string
 	network  runtime.Network
 	verifier *artifact.Verifier
+
+	skillsMu   sync.Mutex
+	skillsPins map[string]*skillsPin
 }
 
 type proxyRoute struct {
@@ -147,14 +151,23 @@ func (b *Backend) Create(ctx context.Context, cfg runtime.Config) (runtime.Handl
 	return b.create(ctx, &cfg, nil)
 }
 
+func defaultIfEmpty(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
+}
+
 func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes []proxyRoute) (runtime.Handle, error) {
+	skillsPin, skillsMounts, skillsLabels, err := b.openSkills(cfg)
+	if err != nil {
+		return runtime.Handle{}, err
+	}
+	defer closeSkillsPin(&skillsPin)
 	if err := b.verifyArtifacts(); err != nil {
 		return runtime.Handle{}, err
 	}
-	image := cfg.Image
-	if image == "" {
-		image = b.image
-	}
+	image := defaultIfEmpty(cfg.Image, b.image)
 	workspaceMounts, err := workspaceMounts(cfg)
 	if err != nil {
 		return runtime.Handle{}, err
@@ -178,13 +191,9 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if err != nil {
 		return runtime.Handle{}, err
 	}
-	var attachment runtime.NetworkAttachment
-	if b.network != nil {
-		var err error
-		attachment, err = b.network.Start(ctx, cfg.Name, cfg.Ports, cfg.Allow, cfg.Deny)
-		if err != nil {
-			return runtime.Handle{}, err
-		}
+	attachment, err := b.startCreateNetwork(ctx, cfg)
+	if err != nil {
+		return runtime.Handle{}, err
 	}
 	spec := RunSpec{
 		ContainerID: id,
@@ -206,6 +215,9 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	}
 	spec.Annotations = append(spec.Annotations, workspaceAnnotations(workspaceMounts)...)
 	spec.Mounts = append(spec.Mounts, workspaceMounts...)
+	if err := applySkillsMounts(&spec, workspaceMounts, skillsMounts, skillsLabels); err != nil {
+		return runtime.Handle{}, err
+	}
 	if err := b.client.Run(ctx, spec); err != nil {
 		cleanupErr := b.cleanupFailedCreate(ctx, id, generation)
 		if b.network != nil {
@@ -213,7 +225,28 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 		}
 		return runtime.Handle{}, errors.Join(err, cleanupErr)
 	}
+	b.rememberSkills(id, skillsPin)
+	skillsPin = nil
 	return runtime.Handle{ID: id, FIFODir: fifoDir}, nil
+}
+
+func applySkillsMounts(spec *RunSpec, workspaceMounts, skillsMounts []Mount, labels []string) error {
+	if len(skillsMounts) == 0 {
+		return nil
+	}
+	if err := validateReservedMounts(workspaceMounts, []string{runtime.SkillsStoreGuestPath, runtime.SkillsHelperGuestPath}); err != nil {
+		return err
+	}
+	spec.Labels = append(spec.Labels, labels...)
+	spec.Mounts = append(spec.Mounts, skillsMounts...)
+	return nil
+}
+
+func (b *Backend) startCreateNetwork(ctx context.Context, cfg *runtime.Config) (runtime.NetworkAttachment, error) {
+	if b.network == nil {
+		return runtime.NetworkAttachment{}, nil
+	}
+	return b.network.Start(ctx, cfg.Name, cfg.Ports, cfg.Allow, cfg.Deny)
 }
 
 // workspaceAnnotations marks workspace mounts for the shim's macOS-only
@@ -494,6 +527,9 @@ func (b *Backend) Start(ctx context.Context, h runtime.Handle) error {
 	if err := b.verifyArtifacts(); err != nil {
 		return err
 	}
+	if err := b.requireSkillsPin(ctx, h.ID); err != nil {
+		return err
+	}
 	if b.network != nil {
 		if _, err := b.network.Start(ctx, strings.TrimPrefix(h.ID, "rheic-"), h.Ports, h.Allow, h.Deny); err != nil {
 			return err
@@ -572,7 +608,24 @@ func (b *Backend) Delete(ctx context.Context, h runtime.Handle) error {
 	if b.network != nil {
 		err = errors.Join(err, b.stopNetwork(ctx, strings.TrimPrefix(h.ID, "rheic-")))
 	}
+	if err == nil {
+		err = b.forgetSkills(h.ID)
+	}
 	return err
+}
+
+func (b *Backend) requireSkillsPin(ctx context.Context, id string) error {
+	labels, err := b.client.containerLabels(ctx, id)
+	if err != nil {
+		return fmt.Errorf("inspect container labels: %w", err)
+	}
+	if labels[skillsLabel] == "" {
+		return nil
+	}
+	if b.skillsPin(id) == nil {
+		return errors.New("shared skills source is no longer pinned; recreate the sandbox")
+	}
+	return nil
 }
 
 // ContainerID returns the containerd container id for a sandbox name.
