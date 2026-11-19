@@ -49,12 +49,28 @@ type BlockVolume struct {
 	Destination string
 }
 
+// SkillsMount describes the store and trusted Linux guest helper selected by
+// the daemon. The daemon owns path verification and lifetime; runtimes must
+// reject unsupported modes rather than silently weakening access.
+type SkillsMount struct {
+	StorePath  string
+	HelperPath string
+	AgentPath  string
+	ReadOnly   bool
+}
+
+const (
+	SkillsStoreGuestPath  = "/run/rheic/agent-skills"
+	SkillsHelperGuestPath = "/run/rheic/skills-helper"
+)
+
 // Config describes a VM create request.
 type Config struct {
 	Name         string
 	Image        string
 	Workspace    string
 	Workspaces   []Workspace
+	Skills       *SkillsMount
 	BlockVolumes []BlockVolume
 	Ports        []Port
 	Allow        []Rule

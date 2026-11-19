@@ -147,14 +147,33 @@ func (b *Backend) Create(ctx context.Context, cfg runtime.Config) (runtime.Handl
 	return b.create(ctx, &cfg, nil)
 }
 
+// rejectUnpinnedSkills refuses shared skills until their source can be pinned
+// across the containerd process boundary.
+func rejectUnpinnedSkills(cfg *runtime.Config) error {
+	if cfg.Skills == nil {
+		return nil
+	}
+	// ctr sends source path strings to containerd, which resolves them in a
+	// different process; validation cannot pin the inode across that gap.
+	// Never expose a potentially substituted host directory to the guest.
+	return errors.New("shared skills mounts require race-safe source binding, unsupported by this runtime")
+}
+
+func defaultIfEmpty(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
+}
+
 func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes []proxyRoute) (runtime.Handle, error) {
+	if err := rejectUnpinnedSkills(cfg); err != nil {
+		return runtime.Handle{}, err
+	}
 	if err := b.verifyArtifacts(); err != nil {
 		return runtime.Handle{}, err
 	}
-	image := cfg.Image
-	if image == "" {
-		image = b.image
-	}
+	image := defaultIfEmpty(cfg.Image, b.image)
 	workspaceMounts, err := workspaceMounts(cfg)
 	if err != nil {
 		return runtime.Handle{}, err
