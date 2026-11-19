@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/sys/unix"
 )
@@ -28,5 +29,44 @@ func pinSkillsStore(path string) (*skillsPin, error) {
 		_ = file.Close()
 		return nil, errors.New("store is not a directory")
 	}
-	return &skillsPin{store: file}, nil
+	mountPoint, err := bindSkillsPin(file)
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return &skillsPin{store: file, storeSource: mountPoint, mountPoint: mountPoint}, nil
+}
+
+// bindSkillsPin exposes the opened descriptor through a private bind mount.
+// nerdbox exports files through virtiofs by path, and a /proc fd path can fail
+// with EIO during the export; a bind mount keeps the pinned inode reachable by
+// a stable path that the shim can share.
+func bindSkillsPin(store *os.File) (string, error) {
+	dir, err := os.MkdirTemp("", "rheic-skills-pin-")
+	if err != nil {
+		return "", errors.New("create shared skills pin directory")
+	}
+	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- the pin root needs owner traversal.
+		_ = os.RemoveAll(dir)
+		return "", errors.New("secure shared skills pin directory")
+	}
+	target := filepath.Join(dir, "store")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", errors.New("create shared skills pin target")
+	}
+	source := fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), store.Fd())
+	if err := unix.Mount(source, target, "", unix.MS_BIND, ""); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", fmt.Errorf("bind shared skills pin: %w", err)
+	}
+	return target, nil
+}
+
+func unmountSkillsPin(target string) error {
+	err := unix.Unmount(target, unix.MNT_DETACH)
+	if err != nil && !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.ENOENT) {
+		return fmt.Errorf("unmount shared skills pin: %w", err)
+	}
+	return os.RemoveAll(filepath.Dir(target))
 }

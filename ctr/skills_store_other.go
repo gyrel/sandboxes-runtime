@@ -113,3 +113,5 @@ func copySnapshotFile(source, destination string, size int64) error {
 	}
 	return nil
 }
+
+func unmountSkillsPin(string) error { return nil }
