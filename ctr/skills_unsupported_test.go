@@ -178,3 +178,39 @@ func TestAdoptSkillsPinRejectsMissingMetadata(t *testing.T) {
 		t.Fatal("empty pin metadata accepted")
 	}
 }
+
+func TestAdoptSnapshotPinOnNonLinux(t *testing.T) {
+	if goruntime.GOOS == "linux" {
+		t.Skip("Linux uses the bind-mount path")
+	}
+	store := t.TempDir()
+	if err := os.WriteFile(filepath.Join(store, "SKILL.md"), []byte("snapshot"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pin, err := pinSkillsStore(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(pin.storeSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]string{
+		skillsLabel:              "readonly",
+		skillsStoreIdentityLabel: skillsIdentity(info),
+		skillsPinPathLabel:       pin.storeSource,
+	}
+	backend := &Backend{}
+	if err := backend.adoptSkillsPin("rheic-dev", labels); err != nil {
+		t.Fatal(err)
+	}
+	if backend.skillsPin("rheic-dev") == nil {
+		t.Fatal("snapshot pin was not adopted")
+	}
+	if err := backend.forgetSkillsPath("rheic-dev", pin.storeSource); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(pin.storeSource); !os.IsNotExist(err) {
+		t.Fatalf("snapshot not removed: %v", err)
+	}
+}

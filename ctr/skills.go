@@ -16,6 +16,7 @@ const (
 	skillsStoreIdentityLabel = "io.rheic.skills.store"
 	skillsPinPathLabel       = "io.rheic.skills.pin"
 	skillsPinDirPrefix       = "rheic-skills-pin-"
+	skillsSnapshotDirPrefix  = "rheic-skills-store-"
 )
 
 // skillsPin holds the opened store directory used as a bind source. The path
@@ -111,8 +112,8 @@ func (b *Backend) openSkills(cfg *runtime.Config) (*skillsPin, []Mount, []string
 		},
 	}
 	labels := []string{skillsLabel + "=readonly"}
-	if pin.mountPoint != "" && pin.identity != "" {
-		labels = append(labels, skillsStoreIdentityLabel+"="+pin.identity, skillsPinPathLabel+"="+pin.mountPoint)
+	if pin.storeSource != "" && pin.identity != "" {
+		labels = append(labels, skillsStoreIdentityLabel+"="+pin.identity, skillsPinPathLabel+"="+pin.storeSource)
 	}
 	return pin, mounts, labels, nil
 }
@@ -165,8 +166,8 @@ func (b *Backend) adoptSkillsPin(id string, labels map[string]string) error {
 	if err != nil || skillsIdentity(info) != identity {
 		return errors.New("shared skills pin no longer matches the store")
 	}
-	if !isSkillsPinMount(pinPath) {
-		return errors.New("shared skills pin is not a mount")
+	if !isSkillsPinSource(pinPath) {
+		return errors.New("shared skills pin is not available")
 	}
 	pin := &skillsPin{storeSource: pinPath, mountPoint: pinPath, identity: identity}
 	b.rememberSkills(id, pin)
@@ -177,7 +178,8 @@ func validSkillsPinPath(path string) bool {
 	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return false
 	}
-	return strings.HasPrefix(filepath.Base(filepath.Dir(path)), skillsPinDirPrefix)
+	base := filepath.Base(filepath.Dir(path))
+	return strings.HasPrefix(base, skillsPinDirPrefix) || strings.HasPrefix(base, skillsSnapshotDirPrefix)
 }
 
 // stageSkillsHelper copies the validated helper into a private 0700 directory.

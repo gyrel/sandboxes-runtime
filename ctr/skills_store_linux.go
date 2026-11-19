@@ -81,6 +81,10 @@ func skillsIdentity(info os.FileInfo) string {
 	return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino)
 }
 
+func isSkillsPinSource(path string) bool {
+	return isSkillsPinMount(path)
+}
+
 func isSkillsPinMount(path string) bool {
 	data, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
