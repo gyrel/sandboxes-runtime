@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.0.39 — 2026-11-19
+
+### Fixed
+
+- Export a pinned shared-skills store through a private bind mount instead of
+  passing a `/proc/<pid>/fd/<n>` path to nerdbox. The fd path could be stat'ed
+  but failed with `EIO` when virtiofs opened it, so the guest helper could not
+  read the store on a real Linux KVM host.
+- Unmount and remove the private pin on sandbox delete; a successful create and
+  delete leaves no `rheic-skills-pin-*` mount or directory behind.
+
+
 ## v0.0.38 — 2026-11-19
 
 ### Added

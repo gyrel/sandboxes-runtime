@@ -20,6 +20,7 @@ type skillsPin struct {
 	helperDir   string
 	snapshotDir string
 	storeSource string
+	mountPoint  string
 }
 
 // closeSkillsPin closes a pin that has not been handed to a created container.
@@ -40,6 +41,9 @@ func (p *skillsPin) Close() error {
 	}
 	if p.helperDir != "" {
 		err = errors.Join(err, os.RemoveAll(p.helperDir))
+	}
+	if p.mountPoint != "" {
+		err = errors.Join(err, unmountSkillsPin(p.mountPoint))
 	}
 	if p.snapshotDir != "" {
 		err = errors.Join(err, os.RemoveAll(p.snapshotDir))

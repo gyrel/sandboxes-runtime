@@ -3,10 +3,12 @@
 package ctr
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -17,6 +19,9 @@ func TestPinSkillsStoreUsesOpenedDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	pin, err := pinSkillsStore(store)
+	if errors.Is(err, syscall.EPERM) {
+		t.Skip("bind pin requires CAP_SYS_ADMIN")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,6 +56,9 @@ func TestPinnedStoreResolvesFromAnotherProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	pin, err := pinSkillsStore(store)
+	if errors.Is(err, syscall.EPERM) {
+		t.Skip("bind pin requires CAP_SYS_ADMIN")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
