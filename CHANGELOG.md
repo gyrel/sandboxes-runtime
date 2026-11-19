@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.0.38 — 2026-11-19
+
+### Added
+
+- Add the shared skills mount contract (`SkillsMount`, guest store and helper
+  paths) and a read-only delivery path. Linux pins the host store with
+  `openat2` and passes an opened descriptor to containerd; other platforms use
+  a bounded private snapshot.
+- Stage the guest skills helper in a private `0700` directory so the nerdbox
+  shim never exports its installation directory.
+- Add a shared skills label so a restarted daemon can fail closed when the
+  pinned source is no longer available.
+
+### Security and limitations
+
+- Read-write shared skills remain unsupported.
+- The macOS snapshot intentionally gives up Docker's live-edit semantics.
+- The Linux fd path needs a daemon process that stays alive; after a daemon
+  restart, starting a shared-skills sandbox fails closed until it is recreated.
+
+
 ## v0.0.37 — 2026-11-19
 
 ## v0.0.36 — 2026-11-17
