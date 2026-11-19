@@ -6,11 +6,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	runtime "github.com/rheic/sandboxes-runtime"
 )
 
-const skillsLabel = "io.rheic.skills"
+const (
+	skillsLabel              = "io.rheic.skills"
+	skillsStoreIdentityLabel = "io.rheic.skills.store"
+	skillsPinPathLabel       = "io.rheic.skills.pin"
+	skillsPinDirPrefix       = "rheic-skills-pin-"
+)
 
 // skillsPin holds the opened store directory used as a bind source. The path
 // passed to containerd is /proc/<pid>/fd/<n>, so a rename or replacement of
@@ -21,6 +27,7 @@ type skillsPin struct {
 	snapshotDir string
 	storeSource string
 	mountPoint  string
+	identity    string
 }
 
 // closeSkillsPin closes a pin that has not been handed to a created container.
@@ -84,6 +91,12 @@ func (b *Backend) openSkills(cfg *runtime.Config) (*skillsPin, []Mount, []string
 	if storeSource == "" {
 		storeSource = fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), pin.store.Fd())
 	}
+	storeInfo, err := os.Stat(storeSource)
+	if err != nil {
+		_ = pin.Close()
+		return nil, nil, nil, errors.New("inspect shared skills pin")
+	}
+	pin.identity = skillsIdentity(storeInfo)
 	mounts := []Mount{
 		{
 			Source:            storeSource,
@@ -97,7 +110,11 @@ func (b *Backend) openSkills(cfg *runtime.Config) (*skillsPin, []Mount, []string
 			ReadOnly:    true,
 		},
 	}
-	return pin, mounts, []string{skillsLabel + "=readonly"}, nil
+	labels := []string{skillsLabel + "=readonly"}
+	if pin.mountPoint != "" && pin.identity != "" {
+		labels = append(labels, skillsStoreIdentityLabel+"="+pin.identity, skillsPinPathLabel+"="+pin.mountPoint)
+	}
+	return pin, mounts, labels, nil
 }
 
 // rememberSkills records the pin only after the container exists, so a failed
@@ -120,15 +137,47 @@ func (b *Backend) skillsPin(id string) *skillsPin {
 	return b.skillsPins[id]
 }
 
-func (b *Backend) forgetSkills(id string) error {
+// forgetSkillsPath cleans up a pin recorded in container labels even when this
+// daemon process did not create it, for example after a daemon restart.
+func (b *Backend) forgetSkillsPath(id, pinPath string) error {
 	b.skillsMu.Lock()
 	pin := b.skillsPins[id]
 	delete(b.skillsPins, id)
 	b.skillsMu.Unlock()
-	if pin == nil {
+	if pin != nil {
+		return pin.Close()
+	}
+	if !validSkillsPinPath(pinPath) {
 		return nil
 	}
-	return pin.Close()
+	return unmountSkillsPin(pinPath)
+}
+
+// adoptSkillsPin reattaches to a bind mount that survived a daemon restart.
+// The recorded store identity must match and the path must still be a mount.
+func (b *Backend) adoptSkillsPin(id string, labels map[string]string) error {
+	pinPath := labels[skillsPinPathLabel]
+	identity := labels[skillsStoreIdentityLabel]
+	if !validSkillsPinPath(pinPath) || identity == "" {
+		return errors.New("shared skills pin metadata is invalid")
+	}
+	info, err := os.Stat(pinPath)
+	if err != nil || skillsIdentity(info) != identity {
+		return errors.New("shared skills pin no longer matches the store")
+	}
+	if !isSkillsPinMount(pinPath) {
+		return errors.New("shared skills pin is not a mount")
+	}
+	pin := &skillsPin{storeSource: pinPath, mountPoint: pinPath, identity: identity}
+	b.rememberSkills(id, pin)
+	return nil
+}
+
+func validSkillsPinPath(path string) bool {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return false
+	}
+	return strings.HasPrefix(filepath.Base(filepath.Dir(path)), skillsPinDirPrefix)
 }
 
 // stageSkillsHelper copies the validated helper into a private 0700 directory.

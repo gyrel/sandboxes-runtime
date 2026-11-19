@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -69,4 +71,31 @@ func unmountSkillsPin(target string) error {
 		return fmt.Errorf("unmount shared skills pin: %w", err)
 	}
 	return os.RemoveAll(filepath.Dir(target))
+}
+
+func skillsIdentity(info os.FileInfo) string {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino)
+}
+
+func isSkillsPinMount(path string) bool {
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 4 && unescapeMountInfo(fields[4]) == path {
+			return true
+		}
+	}
+	return false
+}
+
+func unescapeMountInfo(value string) string {
+	replacer := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
+	return replacer.Replace(value)
 }

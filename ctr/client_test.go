@@ -157,6 +157,8 @@ func TestBackendDeleteAfterTaskHasStopped(t *testing.T) {
 			return []byte("TASK PID STATUS\n"), nil
 		case strings.Contains(strings.Join(args, " "), "containers ls"):
 			return []byte("rheic-dev\n"), nil
+		case strings.Contains(strings.Join(args, " "), "containers info"):
+			return []byte("{}"), nil
 		case strings.Contains(strings.Join(args, " "), "containers delete"):
 			return nil, nil
 		default:
@@ -167,7 +169,7 @@ func TestBackendDeleteAfterTaskHasStopped(t *testing.T) {
 	if err := backend.Delete(context.Background(), runtime.Handle{ID: "rheic-dev"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.calls) != 3 {
+	if len(runner.calls) != 4 {
 		t.Fatalf("unexpected delete sequence: %v", runner.calls)
 	}
 }

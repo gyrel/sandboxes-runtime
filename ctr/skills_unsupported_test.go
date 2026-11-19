@@ -156,3 +156,25 @@ func TestPinSkillsStoreSnapshotRejectsSymlink(t *testing.T) {
 		t.Fatal("snapshot accepted a symlink")
 	}
 }
+
+func TestValidSkillsPinPath(t *testing.T) {
+	valid := filepath.Join(os.TempDir(), "rheic-skills-pin-test", "store")
+	if !validSkillsPinPath(valid) {
+		t.Fatalf("valid pin path rejected: %s", valid)
+	}
+	for _, path := range []string{
+		"", "relative/store", "/", filepath.Join(os.TempDir(), "other", "store"),
+		filepath.Join(os.TempDir(), "rheic-skills-pin-test", "..", "store"),
+	} {
+		if validSkillsPinPath(path) {
+			t.Fatalf("unsafe pin path accepted: %q", path)
+		}
+	}
+}
+
+func TestAdoptSkillsPinRejectsMissingMetadata(t *testing.T) {
+	backend := &Backend{}
+	if err := backend.adoptSkillsPin("rheic-dev", map[string]string{}); err == nil {
+		t.Fatal("empty pin metadata accepted")
+	}
+}
