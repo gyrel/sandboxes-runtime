@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.0.40 — 2026-11-19
+
+### Fixed
+
+- Reattach a shared-skills pin after a daemon restart from container labels and
+  the recorded store dev/inode identity, provided the private bind mount is
+  still present.
+- Clean up the recorded pin on delete even when the current daemon process did
+  not create it, so a restarted daemon does not leak a mount.
+
+
 ## v0.0.39 — 2026-11-19
 
 ### Fixed

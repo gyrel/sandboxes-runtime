@@ -595,6 +595,10 @@ func (b *Backend) Stop(ctx context.Context, h runtime.Handle, grace time.Duratio
 // Delete removes the task and container.
 func (b *Backend) Delete(ctx context.Context, h runtime.Handle) error {
 	status, err := b.client.taskStatus(ctx, h.ID)
+	labels := map[string]string{}
+	if err == nil && b.skillsPin(h.ID) == nil {
+		labels, _ = b.client.containerLabels(ctx, h.ID)
+	}
 	if err == nil && status != "" {
 		err = b.client.DeleteTask(ctx, h.ID)
 	}
@@ -609,7 +613,7 @@ func (b *Backend) Delete(ctx context.Context, h runtime.Handle) error {
 		err = errors.Join(err, b.stopNetwork(ctx, strings.TrimPrefix(h.ID, "rheic-")))
 	}
 	if err == nil {
-		err = b.forgetSkills(h.ID)
+		err = b.forgetSkillsPath(h.ID, labels[skillsPinPathLabel])
 	}
 	return err
 }
@@ -622,8 +626,11 @@ func (b *Backend) requireSkillsPin(ctx context.Context, id string) error {
 	if labels[skillsLabel] == "" {
 		return nil
 	}
-	if b.skillsPin(id) == nil {
-		return errors.New("shared skills source is no longer pinned; recreate the sandbox")
+	if b.skillsPin(id) != nil {
+		return nil
+	}
+	if err := b.adoptSkillsPin(id, labels); err != nil {
+		return fmt.Errorf("reattach shared skills pin: %w", err)
 	}
 	return nil
 }

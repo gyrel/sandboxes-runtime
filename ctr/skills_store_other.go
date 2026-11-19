@@ -115,3 +115,7 @@ func copySnapshotFile(source, destination string, size int64) error {
 }
 
 func unmountSkillsPin(string) error { return nil }
+
+func skillsIdentity(os.FileInfo) string { return "" }
+
+func isSkillsPinMount(string) bool { return false }
