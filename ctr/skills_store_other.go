@@ -114,8 +114,15 @@ func copySnapshotFile(source, destination string, size int64) error {
 	return nil
 }
 
-func unmountSkillsPin(string) error { return nil }
+func isSkillsPinSource(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
 
-func skillsIdentity(os.FileInfo) string { return "" }
+func unmountSkillsPin(path string) error {
+	return os.RemoveAll(filepath.Dir(path))
+}
 
-func isSkillsPinMount(string) bool { return false }
+func skillsIdentity(info os.FileInfo) string {
+	return fmt.Sprintf("%d:%d", info.ModTime().UnixNano(), info.Size())
+}

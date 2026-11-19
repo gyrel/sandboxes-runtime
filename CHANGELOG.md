@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.41 — 2026-11-19
+
+### Fixed
+
+- Record the snapshot source path and identity on non-Linux platforms so a
+  daemon restart can reattach and clean a shared-skills snapshot instead of
+  failing closed.
+
+
 ## v0.0.40 — 2026-11-19
 
 ### Fixed
