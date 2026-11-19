@@ -159,6 +159,7 @@ type RunSpec struct {
 	Env         []string
 	Privileged  bool
 	Annotations []string
+	Labels      []string
 	Args        []string
 	// RunAsRoot runs the trusted proxy helper as root so it can create the
 	// vsock device and install the per-sandbox proxy CA bundle. Agent execs
@@ -197,9 +198,7 @@ func (c *Client) Run(ctx context.Context, spec RunSpec) error {
 	if spec.RunAsRoot {
 		args = append(args, "--user", "0:0")
 	}
-	for _, annotation := range spec.Annotations {
-		args = append(args, "--annotation", annotation)
-	}
+	args = appendRunMetadata(args, spec.Annotations, spec.Labels)
 	for _, mount := range spec.Mounts {
 		if err := validateMount(mount); err != nil {
 			return err
@@ -220,6 +219,16 @@ func (c *Client) Run(ctx context.Context, spec RunSpec) error {
 		return recursiveReadOnlyError(spec.Mounts, err)
 	}
 	return nil
+}
+
+func appendRunMetadata(args, annotations, labels []string) []string {
+	for _, annotation := range annotations {
+		args = append(args, "--annotation", annotation)
+	}
+	for _, label := range labels {
+		args = append(args, "--label", label)
+	}
+	return args
 }
 
 func validMountSource(source string) bool {
