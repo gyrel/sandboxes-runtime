@@ -35,9 +35,9 @@ func TestPinSkillsStoreUsesOpenedDirectory(t *testing.T) {
 }
 
 func TestPinSkillsStoreRejectsSymlink(t *testing.T) {
-	real := t.TempDir()
+	targetDir := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(real, link); err != nil {
+	if err := os.Symlink(targetDir, link); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
 	if _, err := pinSkillsStore(link); err == nil {

@@ -35,6 +35,9 @@ func TestSkillsMountRejectsUnsupportedModesBeforeRuntimeActivity(t *testing.T) {
 }
 
 func TestStageSkillsHelperUsesPrivateDirectory(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix executable permission bits")
+	}
 	source := filepath.Join(t.TempDir(), "sandbox-guest")
 	if err := os.WriteFile(source, []byte("synthetic-helper"), 0o700); err != nil {
 		t.Fatal(err)
@@ -65,6 +68,9 @@ func TestStageSkillsHelperUsesPrivateDirectory(t *testing.T) {
 }
 
 func TestStageSkillsHelperRejectsSymlink(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix executable permission bits")
+	}
 	source := filepath.Join(t.TempDir(), "source")
 	if err := os.WriteFile(source, []byte("x"), 0o700); err != nil {
 		t.Fatal(err)
