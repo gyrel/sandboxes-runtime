@@ -364,11 +364,23 @@ func (c *Client) DeleteContainer(ctx context.Context, id string) error {
 	return err
 }
 
+// run executes ctr. The returned error is safe for API/CLI surfaces: the
+// command line is rendered with environment values masked and host
+// filesystem roots replaced by redactHostPaths, and only the last lines of
+// ctr output are attached. The full raw output is still returned for local
+// daemon-side diagnostics.
 func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 	full := append([]string{"--address", c.cfg.Socket, "--namespace", c.cfg.Namespace}, args...)
 	out, err := c.runner.CombinedOutput(ctx, c.cfg.CTR, full...)
 	if err != nil {
-		return string(out), fmt.Errorf("%s %s: %w: %s", c.cfg.CTR, formatArgs(full), err, strings.TrimSpace(string(out)))
+		roots := c.redactionRoots()
+		message := fmt.Sprintf("ctr %s: %s",
+			redactHostPaths(formatArgs(full), roots),
+			redactHostPaths(err.Error(), roots))
+		if tail := redactHostPaths(outputTail(string(out)), roots); tail != "" {
+			message += ": " + tail
+		}
+		return string(out), &redactedError{message: message, cause: err}
 	}
 	return string(out), nil
 }
