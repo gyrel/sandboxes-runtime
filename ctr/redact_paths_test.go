@@ -129,3 +129,31 @@ func TestRunErrorRedactsBinaryPathInExecFailure(t *testing.T) {
 		t.Fatalf("error must keep the failure reason: %q", err.Error())
 	}
 }
+
+// TestPathVariantsRedactBothSeparators proves redaction covers mixed path
+// spellings independent of the OS running the tests: a root configured with
+// backslashes must mask backslash output, and forward-slash output must be
+// masked via the expanded variants. Regression for the Windows CI failure
+// where filepath.Dir's OS-native spelling missed POSIX-styled ctr logs.
+func TestPathVariantsRedactBothSeparators(t *testing.T) {
+	windowsSocket := `C:\Users\tester\.sandboxes\containerd.sock`
+	roots := pathVariants(windowsSocket)
+	leaky := `pull failed: C:\Users\tester\.sandboxes\containerd-root\work\extract.bin: no space left`
+	got := redactHostPaths(leaky, roots)
+	if strings.Contains(got, "tester") || strings.Contains(got, `.sandboxes\containerd-root`) {
+		t.Fatalf("backslash path leaked: %q", got)
+	}
+	if !strings.Contains(got, "<host-path>/extract.bin") {
+		t.Fatalf("basename must survive redaction: %q", got)
+	}
+
+	unixSocket := "/Users/tester/.sandboxes/containerd.sock"
+	roots = pathVariants(unixSocket)
+	got = redactHostPaths("extract: /Users/tester/.sandboxes/x/read err", roots)
+	if strings.Contains(got, "tester") {
+		t.Fatalf("slash path leaked: %q", got)
+	}
+	if !strings.Contains(got, "<host-path>/read") {
+		t.Fatalf("slash basename must survive: %q", got)
+	}
+}

@@ -57,18 +57,16 @@ func redactedEnvValue(value string) string {
 func (c *Client) redactionRoots() []string {
 	roots := make([]string, 0, 6)
 	add := func(root string) {
-		if root != "" && root != "." && root != "/" && !strings.Contains(root, " ") {
-			roots = append(roots, root)
+		for _, variant := range pathVariants(root) {
+			if variant != "" && variant != "." && variant != "/" && !strings.Contains(variant, " ") {
+				roots = append(roots, variant)
+			}
 		}
 	}
 	add(c.cfg.Socket)
-	if c.cfg.Socket != "" {
-		add(filepath.Dir(c.cfg.Socket))
-	}
 	add(c.cfg.CTR)
 	if abs, err := filepath.Abs(c.cfg.CTR); err == nil {
 		add(abs)
-		add(filepath.Dir(abs))
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		add(home)
@@ -77,6 +75,32 @@ func (c *Client) redactionRoots() []string {
 	// completely before the shorter prefix would fragment it.
 	sort.Slice(roots, func(i, j int) bool { return len(roots[i]) > len(roots[j]) })
 	return roots
+}
+
+// pathVariants expands one filesystem path into the shapes host output can
+// take regardless of the OS running us: the raw value, both separator
+// spellings (ctr logs on a Windows host can mix forward and backslashes, and
+// a POSIX-spelled socket configured on Windows must still mask backslashed
+// output and vice versa), and the parent directory under each spelling.
+// Redaction roots are a fail-closed superset: extra variants can only widen
+// masking, never weaken it.
+func pathVariants(p string) []string {
+	if p == "" {
+		return nil
+	}
+	out := []string{p}
+	if slashed := filepath.ToSlash(p); slashed != p {
+		out = append(out, slashed)
+	}
+	if slashed := filepath.FromSlash(p); slashed != p {
+		out = append(out, slashed)
+	}
+	for _, v := range append([]string(nil), out...) {
+		if idx := strings.LastIndexAny(v, `/\`); idx > 0 {
+			out = append(out, v[:idx])
+		}
+	}
+	return out
 }
 
 // redactHostPaths replaces every configured host root inside s with the
@@ -101,7 +125,7 @@ func redactHostPaths(s string, roots []string) string {
 			}
 			path := s[start:end]
 			replacement := hostPathPlaceholder
-			if base := path[strings.LastIndex(path, "/")+1:]; base != "" {
+			if base := path[strings.LastIndexAny(path, `/\`)+1:]; base != "" {
 				replacement += "/" + base
 			}
 			b.WriteString(s[pos:start])
