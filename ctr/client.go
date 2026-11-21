@@ -1,13 +1,16 @@
 package ctr
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +32,50 @@ type execRunner struct{}
 func (execRunner) CombinedOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...) // #nosec G204 -- ctr and its arguments are validated by this adapter
 	return cmd.CombinedOutput()
+}
+
+// StreamRunner is an optional Runner capability: execute ctr and hand every
+// output chunk (stdout and stderr merged into the callback) to onChunk while
+// the process runs. Implementations must serialize onChunk calls.
+type StreamRunner interface {
+	Stream(ctx context.Context, name string, args []string, onChunk func(chunk []byte)) error
+}
+
+func (execRunner) Stream(ctx context.Context, name string, args []string, onChunk func(chunk []byte)) error {
+	cmd := exec.CommandContext(ctx, name, args...) // #nosec G204 -- ctr and its arguments are validated by this adapter
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	var mu sync.Mutex
+	drain := func(r io.Reader) {
+		buf := make([]byte, 4096)
+		for {
+			n, rerr := r.Read(buf)
+			if n > 0 {
+				chunk := append([]byte(nil), buf[:n]...)
+				mu.Lock()
+				onChunk(chunk)
+				mu.Unlock()
+			}
+			if rerr != nil {
+				return
+			}
+		}
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); drain(stdout) }()
+	go func() { defer wg.Done(); drain(stderr) }()
+	wg.Wait()
+	return cmd.Wait()
 }
 
 // Client wraps a pinned containerd CLI.
@@ -57,6 +104,14 @@ func (c *Client) Version(ctx context.Context) error {
 
 // EnsureImage pulls image when it is not already present.
 func (c *Client) EnsureImage(ctx context.Context, image string) error {
+	return c.EnsureImageProgress(ctx, image, nil)
+}
+
+// EnsureImageProgress pulls image when absent, reporting advisory pull
+// progress while the fetch runs. When onProgress is nil or the Runner does not
+// support streaming, it uses the plain combined-output path. The returned
+// error keeps the same redacted contract as run().
+func (c *Client) EnsureImageProgress(ctx context.Context, image string, onProgress func(Progress)) error {
 	if image == "" {
 		return fmt.Errorf("image is required")
 	}
@@ -69,11 +124,38 @@ func (c *Client) EnsureImage(ctx context.Context, image string) error {
 			return nil
 		}
 	}
-	_, err = c.run(ctx, "images", "pull", "--platform", c.cfg.Platform, "--snapshotter", c.cfg.Snapshotter, image)
-	if err != nil {
+	pull := []string{"images", "pull", "--platform", c.cfg.Platform, "--snapshotter", c.cfg.Snapshotter, image}
+	if err := c.runPull(ctx, pull, onProgress); err != nil {
 		return fmt.Errorf("pull %s: %w", image, err)
 	}
 	return nil
+}
+
+// runPull executes an image pull. Streaming runners drive a pullTracker so
+// callers observe layer counts; otherwise it falls back to combined output.
+func (c *Client) runPull(ctx context.Context, args []string, onProgress func(Progress)) error {
+	sr, ok := c.runner.(StreamRunner)
+	if !ok || onProgress == nil {
+		_, err := c.run(ctx, args...)
+		return err
+	}
+	full := c.globalArgs(args...)
+	tracker := newPullTracker(onProgress)
+	var combined bytes.Buffer
+	err := sr.Stream(ctx, c.cfg.CTR, full, func(chunk []byte) {
+		tracker.observe(chunk)
+		combined.Write(chunk)
+	})
+	tracker.finish()
+	if err == nil {
+		return nil
+	}
+	roots := c.redactionRoots()
+	message := fmt.Sprintf("ctr %s: %s: %s",
+		redactHostPaths(formatArgs(full), roots),
+		redactHostPaths(err.Error(), roots),
+		redactHostPaths(outputTail(combined.String()), roots))
+	return &redactedError{message: message, cause: err}
 }
 
 // ContainerExists reports whether a container exists.
@@ -367,10 +449,16 @@ func (c *Client) DeleteContainer(ctx context.Context, id string) error {
 // run executes ctr. The returned error is safe for API/CLI surfaces: the
 // command line is rendered with environment values masked and host
 // filesystem roots replaced by redactHostPaths, and only the last lines of
+// globalArgs prefixes args with the daemon socket and namespace shared by
+// every ctr invocation.
+func (c *Client) globalArgs(args ...string) []string {
+	return append([]string{"--address", c.cfg.Socket, "--namespace", c.cfg.Namespace}, args...)
+}
+
 // ctr output are attached. The full raw output is still returned for local
 // daemon-side diagnostics.
 func (c *Client) run(ctx context.Context, args ...string) (string, error) {
-	full := append([]string{"--address", c.cfg.Socket, "--namespace", c.cfg.Namespace}, args...)
+	full := c.globalArgs(args...)
 	out, err := c.runner.CombinedOutput(ctx, c.cfg.CTR, full...)
 	if err != nil {
 		roots := c.redactionRoots()
