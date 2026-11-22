@@ -2,6 +2,7 @@ package ctr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -69,4 +70,20 @@ func (b *Backend) OpenBlob(ctx context.Context, d ocilayer.Descriptor) (io.ReadC
 // the expected normalized reference.
 func (b *Backend) ImportTemplate(ctx context.Context, tarPath, ref string) error {
 	return b.client.ImportImage(ctx, tarPath, ref)
+}
+
+// RemoveTemplateImage deletes a recorded template reference from the local
+// image store. Callers (the daemon) must first refuse images still
+// referenced by sandboxes.
+func (b *Backend) RemoveTemplateImage(ctx context.Context, ref string) error {
+	return b.client.RemoveImage(ctx, ref)
+}
+
+// ExportTemplateArchive writes the named template image to tarPath as a
+// docker-save archive.
+func (b *Backend) ExportTemplateArchive(ctx context.Context, ref, tarPath string) error {
+	if strings.TrimSpace(ref) == "" || strings.TrimSpace(tarPath) == "" {
+		return errors.New("template export requires an image reference and an output path")
+	}
+	return b.client.ExportImage(ctx, tarPath, ref)
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.47 — 2026-11-22
+
+### Added
+
+- `RemoveTemplateImage` and `ExportTemplateArchive` on the ctr backend
+  (template rm/export primitives; reference safety is enforced by the
+  daemon before calling).
+
 ## v0.0.46 — 2026-11-22
 
 ### Added

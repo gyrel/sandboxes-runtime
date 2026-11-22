@@ -536,3 +536,21 @@ func (c *Client) ExportImage(ctx context.Context, tarPath, ref string) error {
 	}
 	return nil
 }
+
+// RemoveImage deletes a template image reference from the local store. The
+// daemon is responsible for refusing images still referenced by sandboxes.
+func (c *Client) RemoveImage(ctx context.Context, ref string) error {
+	if ref == "" {
+		return errors.New("image reference is required")
+	}
+	if _, err := c.run(ctx, "images", "rm", ref); err != nil {
+		return fmt.Errorf("remove image %s: %w", sanitizeRef(ref), err)
+	}
+	return nil
+}
+
+// ExportImageTo streams an existing image into the docker-save archive at
+// tarPath (template export without a sandbox context).
+func (c *Client) ExportImageTo(ctx context.Context, ref, tarPath string) error {
+	return c.ExportImage(ctx, tarPath, ref)
+}
