@@ -18,12 +18,25 @@ type Capabilities struct {
 
 // Rule is a CIDR/protocol/port egress rule. ID is the stable policy rule
 // identifier copied into the gateway audit log; it is never used for matching.
+// Methods/Path/Query carry HTTP L7 conditions enforced by the gateway
+// request-head matcher; engines that cannot evaluate them must reject the
+// rule rather than treat it as unconditioned (fail closed).
 type Rule struct {
 	ID       string
 	Protocol string
 	CIDR     string
 	Port     uint16
 	Domain   string
+	Methods  []string
+	Path     string
+	Query    []QueryCondition
+}
+
+// QueryCondition requires one HTTP query parameter name with a value matching
+// the glob pattern in Value.
+type QueryCondition struct {
+	Name  string
+	Value string
 }
 
 // Port maps a host loopback address/port to a guest port.
