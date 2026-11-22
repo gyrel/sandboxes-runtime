@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.49 — 2026-11-22
+
+### Added
+
+- `TemplateRuntime.ImageDigest` seam and backend implementation (native
+  image target lookup); `LoadTemplate` records the imported manifest
+  digest so daemon-side template registration stores a real digest
+  instead of an empty field.
+
 ## v0.0.48 — 2026-11-22
 
 ### Added

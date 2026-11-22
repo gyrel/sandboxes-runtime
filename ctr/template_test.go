@@ -31,6 +31,8 @@ type fakeRuntime struct {
 	importRef    string
 	importTar    string
 	importErr    error
+	digest       ocilayer.Digest
+	digestErr    error
 }
 
 func (f *fakeRuntime) CaptureGuestRoot(_ context.Context, _ runtime.Handle, excludes []string, stdout io.Writer) error {
@@ -56,6 +58,16 @@ func (f *fakeRuntime) OpenBlob(_ context.Context, d ocilayer.Descriptor) (io.Rea
 		return nil, errors.New("fake blob missing")
 	}
 	return io.NopCloser(bytes.NewReader(raw)), nil
+}
+
+func (f *fakeRuntime) ImageDigest(context.Context, string) (ocilayer.Digest, error) {
+	if f.digestErr != nil {
+		return "", f.digestErr
+	}
+	if f.digest == "" {
+		return ocilayer.Digest("sha256:" + strings.Repeat("d", 64)), nil
+	}
+	return f.digest, nil
 }
 
 func (f *fakeRuntime) ImportTemplate(_ context.Context, tarPath, ref string) error {
@@ -300,7 +312,7 @@ func TestLoadTemplateReadsTagAndNormalizes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.importRef != "docker.io/library/mytpl:v2" || summary.Name != rt.importRef {
+	if rt.importRef != "docker.io/library/mytpl:v2" || summary.Name != rt.importRef || !strings.HasPrefix(summary.Digest, "sha256:") {
 		t.Fatalf("importRef=%q summary=%+v", rt.importRef, summary)
 	}
 	rt2 := &fakeRuntime{}
