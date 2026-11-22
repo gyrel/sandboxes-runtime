@@ -329,7 +329,10 @@ func normalized(t time.Time) time.Time {
 // Linux filesystem can actually contain while excluding anything a tar
 // reader could misinterpret.
 func entryPathCharset(p string) bool {
-	if p == "" || strings.ContainsAny(p, "\\x00") {
+	// NUL and backslash are the disallowed characters; "\\x00" here once
+	// meant the literal letters x/0 and rejected every ordinary guest path
+	// (e.g. "external"), which broke real captures.
+	if p == "" || strings.ContainsAny(p, "\x00\\") {
 		return false
 	}
 	for _, r := range p {
