@@ -28,8 +28,7 @@ func (b *Backend) Exec(ctx context.Context, h runtime.Handle, req runtime.ExecRe
 		return 0, fmt.Errorf("create exec identifier: %w", err)
 	}
 	execID := "rheic-exec-" + hex.EncodeToString(nonce[:])
-	args := []string{"--address", b.client.cfg.Socket, "--namespace", b.client.cfg.Namespace,
-		"tasks", "exec", "--exec-id", execID}
+	args := append(b.client.globalArgs(), "tasks", "exec", "--exec-id", execID)
 	if h.FIFODir != "" {
 		args = append(args, "--fifo-dir", h.FIFODir)
 	}

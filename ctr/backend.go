@@ -158,6 +158,18 @@ func defaultIfEmpty(value, fallback string) string {
 	return fallback
 }
 
+// pullProgressForwarder adapts ctr-adapter pull progress to the runtime
+// callback. It returns nil when the caller did not request progress, keeping
+// the plain non-streaming pull path.
+func pullProgressForwarder(cfg *runtime.Config) func(Progress) {
+	if cfg == nil || cfg.OnProgress == nil {
+		return nil
+	}
+	return func(p Progress) {
+		cfg.OnProgress(runtime.ProgressUpdate{Phase: p.Phase, Completed: p.Completed, Total: p.Total})
+	}
+}
+
 func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes []proxyRoute) (runtime.Handle, error) {
 	skillsPin, skillsMounts, skillsLabels, err := b.openSkills(cfg)
 	if err != nil {
@@ -176,7 +188,7 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if fifoDir == "" {
 		fifoDir = b.fifoDir
 	}
-	if err := b.client.EnsureImage(ctx, image); err != nil {
+	if err := b.client.EnsureImageProgress(ctx, image, pullProgressForwarder(cfg)); err != nil {
 		return runtime.Handle{}, err
 	}
 	id := ContainerID(cfg.Name)

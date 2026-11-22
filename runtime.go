@@ -64,6 +64,15 @@ const (
 	SkillsHelperGuestPath = "/run/rheic/skills-helper"
 )
 
+// ProgressUpdate is advisory, human-facing data about a long-running create
+// phase (for example image pull layer counts). It is display data only:
+// lifecycle decisions must key off returned errors and state queries.
+type ProgressUpdate struct {
+	Phase     string
+	Completed int64
+	Total     int64
+}
+
 // Config describes a VM create request.
 type Config struct {
 	Name         string
@@ -91,6 +100,10 @@ type Config struct {
 	ProxyGuestPort uint16
 	// ProxyServiceHost is the fixed upstream host the helper may address.
 	ProxyServiceHost string
+	// OnProgress, when non-nil, receives advisory pull-phase updates during
+	// Create. It is called synchronously from the Create goroutine before
+	// Create returns and must not block; nil disables reporting.
+	OnProgress func(ProgressUpdate)
 }
 
 // Handle identifies a runtime instance.
