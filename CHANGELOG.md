@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.0.44 — 2026-11-22
+
+### Added
+
+- `internal/ocilayer`: deterministic OCI diff-layer builder for template
+  capture (ADR-0008 slice 1). Encodes regular/dir/symlink/hardlink entries
+  plus OCI whiteouts and opaque markers, validates guest paths fail closed
+  (escaping, control characters, bad link targets), content-addresses the
+  layer, and assembles manifest/index/config/docker-save documents that
+  reuse base layers strictly by digest (never squash). Fuzz target for the
+  entry grammar included.
+
 ## Unreleased
 
 ### Added
