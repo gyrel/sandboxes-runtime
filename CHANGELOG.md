@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.0.53 — 2026-11-23
+
+### Fixed
+
+- `StreamBaseListing` decodes compressed base layers. Registry blobs are
+  stored as `tar+gzip` (and `tar+zstd`), but the base listing opened them
+  as raw tar, so `template save` failed with `archive/tar: invalid tar
+  header` on every Docker Hub base (live repro: alpine layer
+  `sha256:00dbf115…`). The leading magic bytes now win over the declared
+  media type (gzip/zstd/plain), a media claim of compression with
+  mismatched bytes fails closed, and `klauspost/compress` (already pinned
+  at the fixed v1.20.2) becomes a direct dependency for zstd. Exported
+  archives keep using the original compressed blobs (digest identity
+  preserved); the capture stream remains uncompressed by design.
+
 ## v0.0.52 — 2026-11-23
 
 ### Fixed

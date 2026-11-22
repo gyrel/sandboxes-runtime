@@ -2,6 +2,8 @@ package ocilayer
 
 import (
 	"archive/tar"
+	"bufio"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +12,8 @@ import (
 	"io"
 	"path"
 	"strings"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // BlobSource opens one content blob for streaming. The runtime wires it to
@@ -42,7 +46,14 @@ func StreamBaseListing(layers []Descriptor, src BlobSource) (map[string]BaseFile
 		if err != nil {
 			return nil, err
 		}
-		if err := applyBaseLayer(listing, rc); err != nil {
+		stream, closer, err := decompressLayerStream(rc, layer.MediaType)
+		if err != nil {
+			_ = rc.Close()
+			return nil, fmt.Errorf("layer %s: %w", layer.Digest, err)
+		}
+		err = applyBaseLayer(listing, stream)
+		_ = closer.Close()
+		if err != nil {
 			_ = rc.Close()
 			return nil, fmt.Errorf("layer %s: %w", layer.Digest, err)
 		}
@@ -52,6 +63,55 @@ func StreamBaseListing(layers []Descriptor, src BlobSource) (map[string]BaseFile
 	}
 	return listing, nil
 }
+
+// decompressLayerStream turns a stored layer blob into a tar stream.
+// Registry layers are media-typed tar+gzip/tar+zstd, but the authoritative
+// signal is the leading magic bytes: a mismatch between media type and bytes
+// is decoded by the bytes (listing must read the real content to verify it
+// against the capture), while anything neither recognizable nor declared as
+// plain tar fails closed.
+func decompressLayerStream(r io.Reader, mediaType string) (io.Reader, io.Closer, error) {
+	br := bufio.NewReader(r)
+	magic, err := br.Peek(4)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, nil, err
+	}
+	switch {
+	case isGzipMagic(magic):
+		gz, err := gzip.NewReader(br)
+		if err != nil {
+			return nil, nil, fmt.Errorf("gzip layer: %w", err)
+		}
+		return gz, gz, nil
+	case isZstdMagic(magic):
+		dec, err := zstd.NewReader(br)
+		if err != nil {
+			return nil, nil, fmt.Errorf("zstd layer: %w", err)
+		}
+		rc := dec.IOReadCloser()
+		return rc, rc, nil
+	case strings.Contains(mediaType, "tar+gzip"):
+		return nil, nil, errors.New("layer media says gzip but bytes are not gzip")
+	case strings.Contains(mediaType, "tar+zstd"):
+		return nil, nil, errors.New("layer media says zstd but bytes are not zstd")
+	default:
+		// Plain tar (uncompressed), the shape `ctr images import` and the
+		// capture pipeline produce.
+		return br, nopCloser{}, nil
+	}
+}
+
+func isGzipMagic(magic []byte) bool {
+	return len(magic) >= 2 && magic[0] == 0x1f && magic[1] == 0x8b
+}
+
+func isZstdMagic(magic []byte) bool {
+	return len(magic) == 4 && magic[0] == 0x28 && magic[1] == 0xb5 && magic[2] == 0x2f && magic[3] == 0xfd
+}
+
+type nopCloser struct{}
+
+func (nopCloser) Close() error { return nil }
 
 func applyBaseLayer(listing map[string]BaseFile, r io.Reader) error {
 	tr := tar.NewReader(r)
