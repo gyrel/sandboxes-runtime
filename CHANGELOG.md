@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `runtime.Rule` carries HTTP L7 conditions (`Methods`, `Path`,
+  `Query []QueryCondition`) so daemon network configuration reaches the
+  gateway policy engine without lossy conversion. Runtime treats them as
+  opaque data; evaluation and fail-closed rejection live in the gateway.
+
 ## v0.0.41 — 2026-11-19
 
 ### Fixed
