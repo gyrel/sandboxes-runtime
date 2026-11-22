@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.48 — 2026-11-22
+
+### Added
+
+- Public `runtime.TemplateBackend` seam (save/load/remove/export/boot
+  document) with presence-only env names; the ctr adapter implements it
+  over the ADR-0008 pipeline so the daemon depends only on the public
+  runtime module.
+
 ## v0.0.47 — 2026-11-22
 
 ### Added
