@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.52 — 2026-11-23
+
+### Fixed
+
+- Template base resolution follows multi-platform OCI indexes. Registry
+  images (e.g. the `shell` template at
+  `docker.io/docker/sandbox-templates@sha256:b178ca62…`) ship as indexes
+  with several children (per-arch manifests plus attestation entries);
+  the previous single-child rule failed with `index with 4 manifests`,
+  aborting `template save` at the `read base image` step. The resolver
+  now selects the child matching the configured platform (same
+  `os[/arch[/variant]]` grammar as `ctr --platform`), skips attestation
+  entries, and fails closed on zero or ambiguous matches.
+
 ## v0.0.51 — 2026-11-23
 
 ### Fixed
