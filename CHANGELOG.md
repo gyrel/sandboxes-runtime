@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.0.51 — 2026-11-23
+
+### Fixed
+
+- `ocilayer` path grammar no longer rejects ordinary guest paths that
+  contain the letters `x`/`0`. `entryPathCharset` guarded with
+  `strings.ContainsAny(p, "\\x00")`, which is the character set
+  backslash/`x`/`0`, so capturing any real image failed with
+  `unsafe path ... outside the guest FS grammar` at the index step
+  (live repro: `etc/alternatives/babeljs-external-helpers`). The guard
+  now checks NUL and backslash explicitly, matching the capture-side
+  idiom, with a charset regression table for paths and symlink targets.
+
 ## v0.0.50 — 2026-11-22
 
 ### Fixed

@@ -201,3 +201,29 @@ func freshEntries(entries []DiffEntry) []DiffEntry {
 	}
 	return out
 }
+
+func TestValidateEntryPathCharsetAllowsRealGuestPaths(t *testing.T) {
+	// Regression: the charset check once treated "\\x00" as the literal
+	// letters backslash-x-0-0, rejecting every path containing 'x' or '0'.
+	for _, ok := range []string{
+		"etc/alternatives/babeljs-external-helpers",
+		"usr/local/bin/gox",
+		"home/agent/file0.txt",
+		"var/lib/docker/x/0",
+	} {
+		if err := validateEntryPath(ok); err != nil {
+			t.Fatalf("legit path rejected: %q: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "/abs", "back\\slash", "nul\x00inside", "ctrl\x01a"} {
+		if err := validateEntryPath(bad); err == nil {
+			t.Fatalf("unsafe path accepted: %q", bad)
+		}
+	}
+	if err := validateSymlinkTarget(DiffEntry{Path: "bin/x", Link: "exe0"}); err != nil {
+		t.Fatalf("symlink with x/0 refused: %v", err)
+	}
+	if err := validateSymlinkTarget(DiffEntry{Path: "bin/x", Link: "evil\\0"}); err == nil {
+		t.Fatal("symlink with backslash accepted")
+	}
+}
