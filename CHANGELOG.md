@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.0.45 — 2026-11-22
+
+### Added
+
+- Capture indexing and diff planning: `IndexCapture` builds a sorted,
+  content-hashed index from a random-access guest capture tar (hostile
+  records — escaping paths, FIFOs, oversize streams — abort indexing fail
+  closed); `Diff` plans additions/changes/skips plus per-path whiteouts and
+  opaque markers; `FindCapturePayload` re-streams exact payloads by scan.
+  `ctr` gains `ImportImage` (with import verification against the image
+  list) and `ExportImage` for the docker-save template artifact.
+
 ## v0.0.44 — 2026-11-22
 
 ### Added
