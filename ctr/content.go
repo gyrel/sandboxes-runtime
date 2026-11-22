@@ -46,7 +46,7 @@ func (b *Backend) ImageLayerDescriptors(ctx context.Context, image string) (laye
 		return nil, ocilayer.Descriptor{}, nil, fmt.Errorf("get image %s: %w", sanitizeRef(image), err)
 	}
 	store := img.ContentStore()
-	manifestBytes, err := resolveManifest(ctx, store, img.Target())
+	manifestBytes, err := resolveManifest(ctx, store, img.Target(), b.client.cfg.Platform)
 	if err != nil {
 		return nil, ocilayer.Descriptor{}, nil, fmt.Errorf("resolve manifest for %s: %w", sanitizeRef(image), err)
 	}
@@ -72,7 +72,7 @@ func (b *Backend) ImageLayerDescriptors(ctx context.Context, image string) (laye
 	return layers, config, configBytes, nil
 }
 
-func resolveManifest(ctx context.Context, store content.Store, desc ocispec.Descriptor) ([]byte, error) {
+func resolveManifest(ctx context.Context, store content.Store, desc ocispec.Descriptor, platform string) ([]byte, error) {
 	for depth := 0; depth < 8; depth++ {
 		raw, err := readBlob(ctx, store, desc)
 		if err != nil {
@@ -83,10 +83,19 @@ func resolveManifest(ctx context.Context, store content.Store, desc ocispec.Desc
 			if err := json.Unmarshal(raw, &idx); err != nil {
 				return nil, fmt.Errorf("%w: parse index: %w", ErrUnsupportedImageShape, err)
 			}
-			if len(idx.Manifests) != 1 {
-				return nil, fmt.Errorf("%w: index with %d manifests", ErrUnsupportedImageShape, len(idx.Manifests))
+			if len(idx.Manifests) == 1 {
+				desc = idx.Manifests[0]
+				continue
 			}
-			desc = idx.Manifests[0]
+			// Registry images are multi-platform OCI indexes (arch manifests
+			// plus attestation entries). Follow the child that matches the
+			// runtime's configured platform; any ambiguity fails closed
+			// rather than picking an arbitrary architecture's layers.
+			chosen, err := selectIndexManifest(idx.Manifests, platform)
+			if err != nil {
+				return nil, err
+			}
+			desc = chosen
 			continue
 		}
 		if !strings.Contains(desc.MediaType, "image.manifest") {
@@ -95,6 +104,41 @@ func resolveManifest(ctx context.Context, store content.Store, desc ocispec.Desc
 		return raw, nil
 	}
 	return nil, fmt.Errorf("%w: index chain too deep", ErrUnsupportedImageShape)
+}
+
+// selectIndexManifest returns the single manifest descriptor whose platform
+// matches "os/arch" or "os/arch/variant" (the same grammar as cfg.Platform
+// and `ctr --platform`). Attestation entries (unknown/nil platform) are
+// never candidates. Zero or multiple matches are refused.
+func selectIndexManifest(manifests []ocispec.Descriptor, platform string) (ocispec.Descriptor, error) {
+	parts := strings.Split(platform, "/")
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return ocispec.Descriptor{}, fmt.Errorf("%w: index with %d manifests and no usable platform %q", ErrUnsupportedImageShape, len(manifests), platform)
+	}
+	var matched []ocispec.Descriptor
+	for _, m := range manifests {
+		if m.Platform == nil || m.Platform.OS == "unknown" || m.Platform.Architecture == "unknown" {
+			continue
+		}
+		candidate := m.Platform.OS + "/" + m.Platform.Architecture
+		if m.Platform.Variant != "" {
+			candidate += "/" + m.Platform.Variant
+		}
+		if candidate == platform {
+			matched = append(matched, m)
+			continue
+		}
+		// A bare "os/arch" config matches a variant-specific manifest only
+		// when it is the sole such child (registries attach variants mostly
+		// to linux/arm); "os/arch/v8" config demands the exact variant.
+		if len(parts) == 2 && strings.HasPrefix(candidate, platform+"/") {
+			matched = append(matched, m)
+		}
+	}
+	if len(matched) == 1 {
+		return matched[0], nil
+	}
+	return ocispec.Descriptor{}, fmt.Errorf("%w: index with %d manifests, %d match platform %q", ErrUnsupportedImageShape, len(manifests), len(matched), platform)
 }
 
 func readBlob(ctx context.Context, store content.Store, desc ocispec.Descriptor) ([]byte, error) {
