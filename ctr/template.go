@@ -59,6 +59,19 @@ const NoticeGuestSecrets = "warning: guest-resident secrets are stored inside th
 
 const templateDefaultExclude = "/var/lib/docker"
 
+// templateVirtualExcludes are guest mount points that must never enter a
+// template capture. /proc, /sys and /dev are runtime virtual filesystems
+// whose contents are not image state (and reading some proc files fails
+// even as guest root, which aborts the archive); /run/bundles exposes the
+// per-VM EROFS layer directories back into the merged root, which would
+// re-walk the entire base image into the diff capture.
+var templateVirtualExcludes = []string{"/proc", "/sys", "/dev", "/run/bundles"}
+
+// templateVirtualExcludeRel is the same list in tar/exclude grammar
+// (relative, no leading slash), used to suppress whiteouts for base paths
+// that live under those prefixes.
+var templateVirtualExcludeRel = []string{"proc", "sys", "dev", "run/bundles"}
+
 var ErrUnsafeExclude = errors.New("unsafe template exclude path")
 
 func validateTemplateExcludes(excludes []string) ([]string, []string, error) {
@@ -145,7 +158,7 @@ func SaveTemplate(ctx context.Context, rt TemplateRuntime, h runtime.Handle, opt
 	if err != nil {
 		return TemplateSummary{}, err
 	}
-	plan, err := ocilayer.Diff(captured, baseListing, opaqueDirs)
+	plan, err := ocilayer.Diff(captured, baseListing, opaqueDirs, templateVirtualExcludeRel)
 	if err != nil {
 		return TemplateSummary{}, fmt.Errorf("plan template layer: %w", err)
 	}

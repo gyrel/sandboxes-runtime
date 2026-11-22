@@ -66,6 +66,33 @@ func TestIndexCaptureRejectsHostileStreams(t *testing.T) {
 	}
 }
 
+func TestDiffVirtualDirsSuppressPlannedEntries(t *testing.T) {
+	captured := []FileMeta{
+		{Path: "etc/hosts", Type: "reg", Mode: 0o644, Digest: Digest("sha256:" + strings.Repeat("a", 64))},
+		// Defensive: a capture that still contains virtual paths (older
+		// guests, unexpected mounts) must not emit them as additions.
+		{Path: "proc/self/exe", Type: "lnk", Link: "../busybox"},
+	}
+	base := map[string]BaseFile{
+		"etc/hosts":   {Path: "etc/hosts", Type: "reg", Mode: 0o644, Digest: Digest("sha256:" + strings.Repeat("a", 64))},
+		"proc/kmsg":   {Path: "proc/kmsg", Type: "reg", Mode: 0o600, Digest: Digest("sha256:" + strings.Repeat("b", 64))},
+		"dev/console": {Path: "dev/console", Type: "chr", Mode: 0o620},
+	}
+	plans, err := Diff(captured, base, nil, []string{"proc", "dev"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plans) != 0 {
+		t.Fatalf("virtual paths must plan no entries: %+v", plans)
+	}
+	// Without virtualDirs the old semantics stay (regression guard).
+	if plans, err = Diff(captured, base, nil, nil); err != nil {
+		t.Fatal(err)
+	} else if len(plans) == 0 {
+		t.Fatal("expected whiteouts/additions when no virtualDirs are supplied")
+	}
+}
+
 func TestDiffPlanSemantics(t *testing.T) {
 	added := DiffEntry{Path: "new", Type: "reg", Size: 1, Reader: strings.NewReader("n")}
 	kept := DiffEntry{Path: "keep", Type: "reg", Size: 3, Reader: strings.NewReader("abc"), Mode: 0o644}
@@ -85,7 +112,7 @@ func TestDiffPlanSemantics(t *testing.T) {
 		"gone":     {Path: "gone", Type: "reg", Mode: 0o644, Digest: Digest("sha256:" + strings.Repeat("f", 64))},
 		"secret/x": {Path: "secret/x", Type: "reg", Mode: 0o600, Digest: Digest("sha256:" + strings.Repeat("e", 64))},
 	}
-	plans, err := Diff(captured, base, []string{"secret"})
+	plans, err := Diff(captured, base, []string{"secret"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +134,7 @@ func TestDiffPlanSemantics(t *testing.T) {
 	}
 	// Modified base entry must re-appear (digest mismatch).
 	base2 := map[string]BaseFile{"keep": {Path: "keep", Type: "reg", Mode: 0o644, Digest: Digest("sha256:" + strings.Repeat("0", 64))}}
-	plans, err = Diff(captured, base2, nil)
+	plans, err = Diff(captured, base2, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +176,7 @@ func TestFindCapturePayload(t *testing.T) {
 }
 
 func TestDiffRejectsBadOpaqueDirectory(t *testing.T) {
-	if _, err := Diff(nil, map[string]BaseFile{"x": {Path: "x", Type: "reg"}}, []string{"../escape"}); err == nil {
+	if _, err := Diff(nil, map[string]BaseFile{"x": {Path: "x", Type: "reg"}}, []string{"../escape"}, nil); err == nil {
 		t.Fatal("escaping opaque dir accepted")
 	}
 }

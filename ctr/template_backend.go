@@ -7,6 +7,7 @@ import (
 	"io"
 	"path"
 	"strings"
+	"sync"
 
 	containerd "github.com/containerd/containerd/v2/client"
 
@@ -20,28 +21,82 @@ import (
 // validateTemplateExcludes upstream; re-validated here defensively). The
 // archive stream is written to stdout. Busybox and GNU tar share the
 // --exclude/-C/. grammar used here.
-func (b *Backend) CaptureGuestRoot(ctx context.Context, h runtime.Handle, excludes []string, stdout io.Writer) error {
+// captureArgv builds the guest tar argv: caller excludes plus the virtual
+// filesystem prefixes and the docker-data default, all in relative
+// --exclude grammar over the root directory. Virtual paths must never be
+// walked (permission-denied proc nodes abort GNU tar with exit 2, and
+// /run/bundles re-exposes the base layer directories into the merged root).
+func captureArgv(excludes []string) ([]string, error) {
 	argv := []string{"tar", "-cf", "-"}
-	for _, e := range excludes {
+	seen := map[string]bool{}
+	for _, e := range append(append([]string{}, excludes...), templateVirtualExcludes...) {
 		rel, err := templateExcludeArg(e)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		if seen[rel] {
+			continue
+		}
+		seen[rel] = true
 		argv = append(argv, "--exclude="+rel)
 	}
 	relDefault, err := templateExcludeArg(templateDefaultExclude)
 	if err != nil {
+		return nil, err
+	}
+	if !seen[relDefault] {
+		argv = append(argv, "--exclude="+relDefault)
+	}
+	return append(argv, "-C", "/", "."), nil
+}
+
+func (b *Backend) CaptureGuestRoot(ctx context.Context, h runtime.Handle, excludes []string, stdout io.Writer) error {
+	argv, err := captureArgv(excludes)
+	if err != nil {
 		return err
 	}
-	argv = append(argv, "--exclude="+relDefault, "-C", "/", ".")
-	code, err := b.ExecNative(ctx, h, runtime.ExecRequest{Argv: argv, User: "root", Stdout: stdout})
+	// Guest tar output contains guest paths only, never host routes or secret
+	// values; it is still capped to a bounded tail before surfacing in the
+	// error so a hostile or huge log cannot balloon the RPC status.
+	var stderr tailBuffer
+	code, err := b.ExecNative(ctx, h, runtime.ExecRequest{
+		Argv: argv, User: "root", Stdout: stdout, Stderr: &stderr,
+	})
 	if err != nil {
 		return fmt.Errorf("guest capture failed (code %d): %w", code, err)
 	}
 	if code != 0 {
-		return fmt.Errorf("guest capture exited %d", code)
+		return fmt.Errorf("guest capture exited %d: %s", code, outputTail(stderr.String()))
 	}
 	return nil
+}
+
+// maxCaptureTailBytes bounds retained guest capture stderr.
+const maxCaptureTailBytes = 64 << 10
+
+// tailBuffer keeps the last written bytes, mirroring the bounded-output
+// pattern used for exec diagnostics. Safe for concurrent stream pumps.
+type tailBuffer struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, p...)
+	if over := len(t.buf) - maxCaptureTailBytes; over > 0 {
+		trimmed := make([]byte, len(t.buf)-over)
+		copy(trimmed, t.buf[over:])
+		t.buf = trimmed
+	}
+	return len(p), nil
+}
+
+func (t *tailBuffer) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return string(t.buf)
 }
 
 func templateExcludeArg(p string) (string, error) {

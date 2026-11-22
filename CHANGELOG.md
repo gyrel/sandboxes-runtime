@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.50 — 2026-11-22
+
+### Fixed
+
+- Template capture no longer walks guest virtual filesystems. `proc`,
+  `sys`, `dev` and `run/bundles` are excluded at the tar capture argv and
+  suppressed from the OCI diff plan (no additions, whiteouts or opaque
+  markers under those prefixes). Previously GNU tar aborted with exit 2 on
+  unreadable proc nodes and inflated the archive by re-walking the EROFS
+  layer directories exposed at `/run/bundles`, so `template save` could
+  never complete against a live guest. Guest tar stderr is now captured in
+  a bounded tail and included in the failure message (guest paths only,
+  never host routes).
+
 ## v0.0.49 — 2026-11-22
 
 ### Added
