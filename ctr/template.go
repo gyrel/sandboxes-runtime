@@ -26,6 +26,10 @@ type TemplateRuntime interface {
 	ImageLayers(ctx context.Context, image string) (layers []ocilayer.Descriptor, config []byte, err error)
 	OpenBlob(ctx context.Context, d ocilayer.Descriptor) (io.ReadCloser, error)
 	ImportTemplate(ctx context.Context, tarPath, ref string) error
+	// ImageDigest resolves the manifest digest of a locally imported
+	// reference after load, so template records can be stored without a
+	// second parse of the archive.
+	ImageDigest(ctx context.Context, ref string) (ocilayer.Digest, error)
 }
 
 // TemplateSaveOptions carries one save request. Excludes are guest
@@ -338,7 +342,11 @@ func LoadTemplate(ctx context.Context, rt TemplateRuntime, tarPath, name string)
 	if err := rt.ImportTemplate(ctx, tarPath, ref); err != nil {
 		return TemplateSummary{}, fmt.Errorf("load template archive: %w", err)
 	}
-	return TemplateSummary{Name: ref, SizeBytes: stat.Size(), Notice: NoticeGuestSecrets}, nil
+	digest, err := rt.ImageDigest(ctx, ref)
+	if err != nil {
+		return TemplateSummary{}, fmt.Errorf("resolve loaded template digest: %w", err)
+	}
+	return TemplateSummary{Name: ref, Digest: string(digest), SizeBytes: stat.Size(), Notice: NoticeGuestSecrets}, nil
 }
 
 func readArchiveTag(file *os.File) (string, error) {

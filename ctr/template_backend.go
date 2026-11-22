@@ -8,6 +8,8 @@ import (
 	"path"
 	"strings"
 
+	containerd "github.com/containerd/containerd/v2/client"
+
 	runtime "github.com/rheic/sandboxes-runtime"
 
 	"github.com/rheic/sandboxes-runtime/internal/ocilayer"
@@ -86,4 +88,18 @@ func (b *Backend) ExportTemplateArchive(ctx context.Context, ref, tarPath string
 		return errors.New("template export requires an image reference and an output path")
 	}
 	return b.client.ExportImage(ctx, tarPath, ref)
+}
+
+// ImageDigest resolves the manifest digest of a locally present reference.
+func (b *Backend) ImageDigest(ctx context.Context, ref string) (ocilayer.Digest, error) {
+	client, err := containerd.New(b.client.cfg.Socket, containerd.WithDefaultNamespace(b.client.cfg.Namespace))
+	if err != nil {
+		return "", fmt.Errorf("connect containerd: %w", err)
+	}
+	defer func() { _ = client.Close() }()
+	img, err := client.GetImage(ctx, ref)
+	if err != nil {
+		return "", fmt.Errorf("resolve imported template %s: %w", sanitizeRef(ref), err)
+	}
+	return ocilayer.Digest(img.Target().Digest.String()), nil
 }
