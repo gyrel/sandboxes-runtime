@@ -178,12 +178,17 @@ type BaseFile struct {
 // digest for regular files) are skipped. Removals become per-file
 // whiteouts, except under opaque directories, which receive a single
 // opaque marker and suppress descendant whiteouts.
-func Diff(captured []FileMeta, base map[string]BaseFile, opaqueDirs []string) ([]PlannedEntry, error) {
+// Diff plans one OCI diff layer. opaqueDirs mark excluded live directories
+// (their lower content is hidden); virtualDirs (proc, sys, dev, bundle
+// mounts) are capture-time-only prefixes: entries under them never become
+// additions, never become whiteouts and receive no opaque marker, because
+// their runtime contents are not image state.
+func Diff(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtualDirs []string) ([]PlannedEntry, error) {
 	if err := validateOpaqueDirs(opaqueDirs); err != nil {
 		return nil, err
 	}
-	plans := additions(captured, base, opaqueDirs)
-	plans = append(plans, removals(captured, base, opaqueDirs)...)
+	plans := additions(captured, base, opaqueDirs, virtualDirs)
+	plans = append(plans, removals(captured, base, opaqueDirs, virtualDirs)...)
 	for _, dir := range opaqueDirs {
 		plans = append(plans, PlannedEntry{Emit: DiffEntry{Path: dir, Type: "opaque"}, CaptureIndex: -1})
 	}
@@ -201,10 +206,10 @@ func validateOpaqueDirs(dirs []string) error {
 
 // additions keeps captured entries that are new or changed relative to the
 // base listing and skips untouched duplicates (type+mode+content digest).
-func additions(captured []FileMeta, base map[string]BaseFile, opaqueDirs []string) []PlannedEntry {
+func additions(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtualDirs []string) []PlannedEntry {
 	plans := make([]PlannedEntry, 0, len(captured))
 	for i, m := range captured {
-		if underAnyOpaque(m.Path, opaqueDirs) {
+		if underAnyOpaque(m.Path, opaqueDirs) || underAnyOpaque(m.Path, virtualDirs) {
 			continue
 		}
 		old, existed := base[m.Path]
@@ -222,14 +227,14 @@ func additions(captured []FileMeta, base map[string]BaseFile, opaqueDirs []strin
 // removals whiteouts base paths missing from the capture. Whiteouting a
 // base directory path removes the directory and its subtree on overlay
 // apply, so one entry per missing base path is sufficient.
-func removals(captured []FileMeta, base map[string]BaseFile, opaqueDirs []string) []PlannedEntry {
+func removals(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtualDirs []string) []PlannedEntry {
 	capturedSet := make(map[string]struct{}, len(captured))
 	for _, m := range captured {
 		capturedSet[m.Path] = struct{}{}
 	}
 	var paths []string
 	for p := range base {
-		if underAnyOpaque(p, opaqueDirs) {
+		if underAnyOpaque(p, opaqueDirs) || underAnyOpaque(p, virtualDirs) {
 			continue
 		}
 		if _, ok := capturedSet[p]; !ok {
