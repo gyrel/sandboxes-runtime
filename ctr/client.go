@@ -498,3 +498,41 @@ func mountSpec(m Mount) string {
 	}
 	return fmt.Sprintf("type=bind,src=%s,dst=%s,options=%s", m.Source, m.Destination, options)
 }
+
+// ImportImage imports an OCI/docker-save tar archive into the local image
+// store under the given names, mirroring how template load consumes the
+// baseline artifact. ref is the docker.io-normalized image name the daemon
+// will boot from with --pull never semantics. Errors keep the redacted
+// run() contract.
+func (c *Client) ImportImage(ctx context.Context, tarPath, ref string) error {
+	if tarPath == "" || ref == "" {
+		return fmt.Errorf("import requires an archive path and an image name")
+	}
+	if _, err := c.run(ctx, "images", "import", tarPath); err != nil {
+		return fmt.Errorf("import template image: %w", err)
+	}
+	out, err := c.run(ctx, "images", "ls", "-q")
+	if err != nil {
+		return fmt.Errorf("verify imported template image: %w", err)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == ref {
+			return nil
+		}
+	}
+	return fmt.Errorf("import template image: archive did not provide %s", ref)
+}
+
+// ExportImage writes the named image (with all its referenced layers by
+// digest) to a docker-save-compatible tar for template save --output.
+// Content addressing stays inside containerd; the daemon validates the
+// produced file separately.
+func (c *Client) ExportImage(ctx context.Context, tarPath, ref string) error {
+	if tarPath == "" || ref == "" {
+		return fmt.Errorf("export requires an archive path and an image name")
+	}
+	if _, err := c.run(ctx, "images", "export", tarPath, ref); err != nil {
+		return fmt.Errorf("export template image: %w", err)
+	}
+	return nil
+}
