@@ -256,6 +256,13 @@ func writeEntry(tw *tar.Writer, e DiffEntry) error {
 	}
 }
 
+func writeOpaque(tw *tar.Writer, e DiffEntry, mod time.Time) error {
+	return tw.WriteHeader(&tar.Header{
+		Typeflag: tar.TypeReg, Name: path.Join(e.Path, opaqueMarkerName),
+		Mode: 0o644, Size: 0, Format: tar.FormatGNU, ModTime: mod,
+	})
+}
+
 func writeWhiteout(tw *tar.Writer, e DiffEntry, mod time.Time) error {
 	dir, name, err := whiteoutName(e.Path)
 	if err != nil {

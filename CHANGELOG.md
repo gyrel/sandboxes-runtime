@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.0.46 — 2026-11-22
+
+### Added
+
+- Template save/load orchestration (ADR-0008 slice 3): `SaveTemplate`
+  streams a root-owned guest `tar -cf -` capture into a private temp file,
+  resolves the base image listing from verified content blobs (digests
+  re-checked on read; mismatch aborts), plans and streams one OCI diff
+  layer over the capture in a single pass, assembles the image reusing the
+  base config and layer digests, writes the dual OCI + docker-save archive
+  once (no layer duplication, no squash), imports it under the normalized
+  docker.io/library reference and optionally exports an
+  exclusive-create copy. Excludes (mounts, `/var/lib/docker`) become opaque
+  markers and are also passed as tar excludes; the exclude grammar refuses
+  escapes and flag-looking values. `LoadTemplate` reads the archived tag
+  from manifest.json, normalizes references and imports.
+
 ## v0.0.45 — 2026-11-22
 
 ### Added

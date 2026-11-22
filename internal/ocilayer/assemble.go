@@ -139,6 +139,8 @@ type Layout struct {
 	// Blobs contains the config and manifest documents (and, for the
 	// export, the docker-save manifest.json) sized and digested.
 	Blobs []Blob
+	// ManifestID locates the manifest document inside Blobs.
+	ManifestID Digest
 	// LayerFileNames maps each layer digest to its "<hex>/diff" tar path
 	// used both in the OCI layout and the docker-save layer naming.
 	LayerFileNames []string
@@ -210,7 +212,7 @@ func Assemble(img Image) (*Layout, error) {
 		return nil, fmt.Errorf("marshal docker-save manifest: %w", err)
 	}
 	return &Layout{
-		Config: cfgDoc, ConfigID: cfgDesc.Digest, Manifest: manifest, Index: index,
+		Config: cfgDoc, ConfigID: cfgDesc.Digest, Manifest: manifest, ManifestID: manDesc.Digest, Index: index,
 		Blobs: []Blob{
 			{Digest: cfgDesc.Digest, Blob: cfgRaw},
 			{Digest: manDesc.Digest, Blob: manRaw},
@@ -311,4 +313,96 @@ func validateAssemblyInputs(img Image) error {
 		}
 	}
 	return nil
+}
+
+// AssembleWithConfig reuses a base image's config document verbatim
+// (architecture, OS, Env, WorkingDir, User, created) and appends the new
+// diff layer, matching the baseline container-commit semantics: only the
+// layer chain and history change.
+func AssembleWithConfig(img Image, baseConfig []byte) (*Layout, error) {
+	if img.DiffLayer.Digest == "" || !img.DiffLayer.Digest.Valid() || img.DiffLayer.Size <= 0 {
+		return nil, fmt.Errorf("%w: diff layer descriptor incomplete", ErrInvalid)
+	}
+	for _, l := range img.BaseLayers {
+		if !l.Digest.Valid() || l.Size <= 0 {
+			return nil, fmt.Errorf("%w: base layer descriptor %q invalid", ErrInvalid, l.Digest)
+		}
+	}
+	name, err := img.NormalizedName()
+	if err != nil {
+		return nil, err
+	}
+	suffix := tagSuffix(strings.TrimSpace(img.Tag))
+	if suffix == "" {
+		return nil, fmt.Errorf("%w: empty tag suffix", ErrInvalid)
+	}
+	var cfgDoc Config
+	if len(baseConfig) > 0 {
+		if err := json.Unmarshal(baseConfig, &cfgDoc); err != nil {
+			return nil, fmt.Errorf("parse base image config: %w", err)
+		}
+	} else {
+		fallback, err := Assemble(img)
+		if err != nil {
+			return nil, err
+		}
+		cfgDoc = fallback.Config
+	}
+	cfgDoc.RootFS.DiffIDs = append(append([]string{}, img.BaseDiffIDs()...), string(img.DiffLayer.Digest))
+	history := append(append([]History{}, cfgDoc.History...), History{CreatedBy: "Rheic template capture"})
+	cfgDoc.History = history
+	cfgRaw, err := json.Marshal(cfgDoc)
+	if err != nil {
+		return nil, fmt.Errorf("marshal config: %w", err)
+	}
+	cfgDesc := Descriptor{MediaType: MediaConfig, Digest: digestOf(cfgRaw), Size: int64(len(cfgRaw))}
+	layers := append(append([]Descriptor{}, img.BaseLayers...), img.DiffLayer)
+	manifest := Manifest{
+		SchemaVersion: 2, MediaType: MediaManifest, Config: cfgDesc, Layers: layers,
+		Annotations: map[string]string{AnnotationImageName: name + ":" + suffix},
+	}
+	manRaw, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("marshal manifest: %w", err)
+	}
+	manDesc := Descriptor{MediaType: MediaManifest, Digest: digestOf(manRaw), Size: int64(len(manRaw))}
+	index := Index{SchemaVersion: 2, MediaType: "application/vnd.oci.image.index.v1+json", Manifests: []Descriptor{manDesc}}
+	save := []dockerSaveEntry{{
+		Config:   blobHex(cfgDesc.Digest) + ".json",
+		RepoTags: []string{name + ":" + suffix},
+		Layers:   layerPaths(layers),
+	}}
+	saveRaw, err := json.Marshal(save)
+	if err != nil {
+		return nil, fmt.Errorf("marshal docker-save manifest: %w", err)
+	}
+	return &Layout{
+		Config: cfgDoc, ConfigID: cfgDesc.Digest, Manifest: manifest, ManifestID: manDesc.Digest, Index: index,
+		Blobs: []Blob{
+			{Digest: cfgDesc.Digest, Blob: cfgRaw},
+			{Digest: manDesc.Digest, Blob: manRaw},
+			{Digest: digestOf(saveRaw), Blob: saveRaw},
+		},
+		LayerFileNames: layerPaths(layers),
+	}, nil
+}
+
+// BaseDiffIDs extracts the existing rootfs diff ids; template layers are
+// uncompressed so layer digest equals diff id.
+func (img Image) BaseDiffIDs() []string {
+	out := make([]string, 0, len(img.BaseLayers))
+	for _, l := range img.BaseLayers {
+		out = append(out, string(l.Digest))
+	}
+	return out
+}
+
+func blobHex(d Digest) string { return strings.TrimPrefix(string(d), "sha256:") }
+
+func layerPaths(layers []Descriptor) []string {
+	out := make([]string, 0, len(layers))
+	for _, l := range layers {
+		out = append(out, blobHex(l.Digest)+"/diff")
+	}
+	return out
 }
