@@ -1,0 +1,72 @@
+package ctr
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"path"
+	"strings"
+
+	runtime "github.com/rheic/sandboxes-runtime"
+
+	"github.com/rheic/sandboxes-runtime/internal/ocilayer"
+)
+
+// CaptureGuestRoot runs a guest-side `tar -cf -` of the whole root
+// filesystem as root, excluding the given guest paths (validated by
+// validateTemplateExcludes upstream; re-validated here defensively). The
+// archive stream is written to stdout. Busybox and GNU tar share the
+// --exclude/-C/. grammar used here.
+func (b *Backend) CaptureGuestRoot(ctx context.Context, h runtime.Handle, excludes []string, stdout io.Writer) error {
+	argv := []string{"tar", "-cf", "-"}
+	for _, e := range excludes {
+		rel, err := templateExcludeArg(e)
+		if err != nil {
+			return err
+		}
+		argv = append(argv, "--exclude="+rel)
+	}
+	relDefault, err := templateExcludeArg(templateDefaultExclude)
+	if err != nil {
+		return err
+	}
+	argv = append(argv, "--exclude="+relDefault, "-C", "/", ".")
+	code, err := b.ExecNative(ctx, h, runtime.ExecRequest{Argv: argv, User: "root", Stdout: stdout})
+	if err != nil {
+		return fmt.Errorf("guest capture failed (code %d): %w", code, err)
+	}
+	if code != 0 {
+		return fmt.Errorf("guest capture exited %d", code)
+	}
+	return nil
+}
+
+func templateExcludeArg(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" || !strings.HasPrefix(p, "/") || path.Clean(p) != p ||
+		strings.ContainsAny(p, "\n\x00") || p == "/" || strings.HasPrefix(p, "-") {
+		return "", fmt.Errorf("%w: %q", ErrUnsafeExclude, p)
+	}
+	return strings.TrimPrefix(p, "/"), nil
+}
+
+// ImageLayers exposes the verified manifest/config/blob listing seam for
+// template assembly.
+func (b *Backend) ImageLayers(ctx context.Context, image string) ([]ocilayer.Descriptor, []byte, error) {
+	layers, _, config, err := b.ImageLayerDescriptors(ctx, image)
+	if err != nil {
+		return nil, nil, err
+	}
+	return layers, config, nil
+}
+
+// OpenBlob streams one verified content blob for template export.
+func (b *Backend) OpenBlob(ctx context.Context, d ocilayer.Descriptor) (io.ReadCloser, error) {
+	return b.OpenTemplateBlob(ctx, d.Digest, d.Size)
+}
+
+// ImportTemplate records a template archive in the local image store under
+// the expected normalized reference.
+func (b *Backend) ImportTemplate(ctx context.Context, tarPath, ref string) error {
+	return b.client.ImportImage(ctx, tarPath, ref)
+}
