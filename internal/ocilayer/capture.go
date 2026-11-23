@@ -171,6 +171,11 @@ type BaseFile struct {
 	Type   string
 	Mode   uint32
 	Digest Digest
+	// Link is the stored target for symlink/hardlink base entries; it lets
+	// the diff skip unchanged links instead of re-emitting every base link
+	// (alpine's bin/ is a symlink, and re-emitting it broke the capture
+	// stream, which cannot carry payloads for link types).
+	Link string
 }
 
 // Diff compares an indexed capture with the base listing and returns the
@@ -213,7 +218,7 @@ func additions(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtua
 			continue
 		}
 		old, existed := base[m.Path]
-		if m.Type == typeReg && existed && old.Type == typeReg && old.Mode == m.Mode && old.Digest == m.Digest {
+		if existed && unchangedBase(m, old) {
 			continue
 		}
 		plans = append(plans, PlannedEntry{
@@ -222,6 +227,30 @@ func additions(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtua
 		})
 	}
 	return plans
+}
+
+// unchangedBase reports whether a captured entry is identical to its base
+// record by the comparison each type supports: regular files by mode and
+// content digest, directories by mode, links by target (hardlinks also by
+// mode), specials by presence only (no payload semantics are stored).
+func unchangedBase(m FileMeta, old BaseFile) bool {
+	if m.Type != old.Type {
+		return false
+	}
+	switch m.Type {
+	case typeReg:
+		return old.Mode == m.Mode && old.Digest == m.Digest
+	case typeDir:
+		return old.Mode == m.Mode
+	case typeSymlink:
+		return old.Link == m.Link
+	case typeHardlink:
+		return old.Link == m.Link && old.Mode == m.Mode
+	case "special":
+		return true
+	default:
+		return false
+	}
 }
 
 // removals whiteouts base paths missing from the capture. Whiteouting a
