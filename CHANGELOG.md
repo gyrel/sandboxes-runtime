@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.0.59 — Unreleased
+
+### Fixed
+
+- Template capture excludes are root-anchored. `proc`, `sys`, `dev` and
+  `run` are excluded as `./proc`, `./sys`, `./dev` and `./run` against the
+  `-C / .` member names, so only the root mount points are skipped. The
+  previous bare patterns also matched nested directories with the same
+  names: a guest probe showed `--exclude=sys` removing
+  `usr/include/aarch64-linux-gnu/sys/`. The planner then emitted a
+  whiteout directory with per-file whiteouts inside it, which erofs rejects
+  with `Not a directory` (roundtrip v9, `difflayer.bin`). `run/bundles` is
+  covered by `./run`. Caller-supplied `--exclude` values keep their
+  existing grammar.
+- Template diff planning folds deletions. A missing base path whose
+  ancestor is also missing from the capture produces one whiteout at the
+  highest missing ancestor, and no whiteouts inside a whiteout-ed
+  directory. Base paths beneath a directory replaced by a file or symlink
+  in the capture produce no whiteouts, and capture entries beneath such a
+  replacement are dropped. The roundtrip v9 layer carried `run/systemd/`
+  whiteouts alongside `run/.wh.systemd`, the same contradiction.
+- Alpha data-semantics note: nested directories named `proc`, `sys`, `dev`
+  or `run` are now captured. Templates saved with older runtimes may carry
+  phantom whiteouts for those directories, and `/run` contents are no
+  longer captured. There is no migration. Re-save the template to get a
+  clean layer.
+
 ## v0.0.58 — 2026-11-23
 
 ### Fixed

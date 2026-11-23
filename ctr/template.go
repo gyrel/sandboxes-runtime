@@ -59,18 +59,20 @@ const NoticeGuestSecrets = "warning: guest-resident secrets are stored inside th
 
 const templateDefaultExclude = "/var/lib/docker"
 
-// templateVirtualExcludes are guest mount points that must never enter a
+// templateVirtualExcludes are root mount points that must never enter a
 // template capture. /proc, /sys and /dev are runtime virtual filesystems
 // whose contents are not image state (and reading some proc files fails
-// even as guest root, which aborts the archive); /run/bundles exposes the
-// per-VM EROFS layer directories back into the merged root, which would
-// re-walk the entire base image into the diff capture.
-var templateVirtualExcludes = []string{"/proc", "/sys", "/dev", "/run/bundles"}
+// even as guest root, which aborts the archive). /run is a fresh tmpfs at
+// every boot: its base-image state is legitimately absent, and its runtime
+// state (including the per-VM layer directories) must not be captured.
+// Only the root mount points are virtual; nested directories with the same
+// names are image state and stay in the capture.
+var templateVirtualExcludes = []string{"/proc", "/sys", "/dev", "/run"}
 
-// templateVirtualExcludeRel is the same list in tar/exclude grammar
-// (relative, no leading slash), used to suppress whiteouts for base paths
-// that live under those prefixes.
-var templateVirtualExcludeRel = []string{"proc", "sys", "dev", "run/bundles"}
+// templateVirtualExcludeRel is the same list root-relative (no leading
+// slash), matching the anchored capture argv, used to suppress planner
+// output for base paths under those root mount points.
+var templateVirtualExcludeRel = []string{"proc", "sys", "dev", "run"}
 
 var ErrUnsafeExclude = errors.New("unsafe template exclude path")
 
