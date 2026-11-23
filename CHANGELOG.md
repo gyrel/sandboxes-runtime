@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.0.58 — 2026-11-23
+
+### Fixed
+
+- `AssembleWithConfig` keeps the base image config's own `rootfs.diff_ids`
+  and appends only the newly built diff layer digest. Previously the diff
+  id list was rebuilt from layer descriptor digests — compressed blob
+  digests for registry layers — so containerd rejected the template
+  import with `wrong diff id calculated on extraction` (live repro on
+  daemon v0.0.88, alpine base layer `sha256:00dbf115…`). A base config
+  whose diff-id count does not match the layer count is now refused
+  (fail closed). Uncompressed synthetic fixtures, where digest equals
+  diff id, silently masked this before; the ctr fake now supplies a
+  config-shaped diff id.
+
 ## v0.0.57 — 2026-11-23
 
 ### Fixed
