@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -82,6 +83,13 @@ func metaFromHeader(hdr *tar.Header, tr *tar.Reader) (FileMeta, bool, error) {
 		return FileMeta{}, false, fmt.Errorf("%w: unsupported record %q on %q", ErrMalformedCapture, string(hdr.Typeflag), hdr.Name)
 	}
 	meta := &FileMeta{Path: name, Type: kind, Mode: uint32(hdr.Mode & 0o7777), Size: hdr.Size, Link: hdr.Linkname, Modified: hdr.ModTime.UTC()}
+	if kind == typeHardlink {
+		link, err := normalizeLinkTarget(hdr.Linkname)
+		if err != nil {
+			return FileMeta{}, false, fmt.Errorf("%w: %w on %q", ErrMalformedCapture, err, hdr.Name)
+		}
+		meta.Link = link
+	}
 	if kind == typeReg {
 		// Current position of the section reader is header+payload start;
 		// tar data begins right after the 512-byte block grid consumed so
@@ -123,6 +131,25 @@ func captureType(flag byte) (string, bool, bool) {
 
 // normalizeCapturePath strips "./" and "/" prefixes produced by `tar -cf -
 // .` runs and validates the remainder against the entry grammar.
+// normalizeLinkTarget canonicalizes a hardlink target to the clean
+// relative grammar used by entry paths. GNU tar records the target of a
+// hardlink with the same "./" prefix it gave the member itself, while
+// registry base layers store plain relative names; comparing or re-emitting
+// the raw strings produced spurious "changed" hardlinks that then failed
+// path validation ("bad hardlink target"). Symlink targets intentionally
+// keep their raw text: they are resolved by the guest kernel at use time.
+func normalizeLinkTarget(name string) (string, error) {
+	p := strings.TrimPrefix(strings.TrimPrefix(name, "./"), "/")
+	if p == "" {
+		return "", fmt.Errorf("%w: empty hardlink target", ErrUnsafePath)
+	}
+	cleaned := path.Clean(p)
+	if cleaned != p || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("%w: uncleaned or escaping hardlink target %q", ErrUnsafePath, name)
+	}
+	return cleaned, nil
+}
+
 func normalizeCapturePath(name string) (string, error) {
 	p := strings.TrimPrefix(name, "./")
 	p = strings.TrimPrefix(p, "/")
@@ -193,11 +220,67 @@ func Diff(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtualDirs
 		return nil, err
 	}
 	plans := additions(captured, base, opaqueDirs, virtualDirs)
+	plans, err := includeHardlinkTargets(plans, captured, opaqueDirs, virtualDirs)
+	if err != nil {
+		return nil, err
+	}
 	plans = append(plans, removals(captured, base, opaqueDirs, virtualDirs)...)
 	for _, dir := range opaqueDirs {
 		plans = append(plans, PlannedEntry{Emit: DiffEntry{Path: dir, Type: "opaque"}, CaptureIndex: -1})
 	}
 	return plans, nil
+}
+
+// includeHardlinkTargets guarantees layer self-containment: a hardlink
+// member references another member by name inside the same tar, so every
+// emitted hardlink drags its target in even when the target alone would
+// have been skipped as unchanged. A target that is not a captured member,
+// or that lives under an excluded (opaque or virtual) prefix, cannot be
+// represented in the layer and is refused (fail closed) instead of
+// producing a template that breaks at apply or boot.
+func includeHardlinkTargets(plans []PlannedEntry, captured []FileMeta, opaqueDirs, virtualDirs []string) ([]PlannedEntry, error) {
+	index := make(map[string]int, len(captured))
+	for i, m := range captured {
+		index[m.Path] = i
+	}
+	planned := make(map[string]bool, len(plans))
+	for _, pl := range plans {
+		planned[pl.Emit.Path] = true
+	}
+	out := plans
+	var pending []string
+	for _, pl := range plans {
+		if pl.Emit.Type == typeHardlink {
+			pending = append(pending, pl.Emit.Link)
+		}
+	}
+	for len(pending) > 0 {
+		target := pending[0]
+		pending = pending[1:]
+		if planned[target] {
+			continue
+		}
+		if underAnyOpaque(target, virtualDirs) {
+			return nil, fmt.Errorf("%w: hardlink target %q is under a virtual prefix", ErrInvalid, target)
+		}
+		i, ok := index[target]
+		if !ok {
+			return nil, fmt.Errorf("%w: hardlink target %q is not a captured member", ErrInvalid, target)
+		}
+		m := captured[i]
+		if underAnyOpaque(m.Path, opaqueDirs) {
+			return nil, fmt.Errorf("%w: hardlink target %q is inside an excluded directory", ErrInvalid, target)
+		}
+		planned[target] = true
+		out = append(out, PlannedEntry{
+			Emit:         DiffEntry{Path: m.Path, Type: m.Type, Mode: m.Mode, Size: m.Size, Link: m.Link, Modified: m.Modified},
+			CaptureIndex: i,
+		})
+		if m.Type == typeHardlink {
+			pending = append(pending, m.Link)
+		}
+	}
+	return out, nil
 }
 
 func validateOpaqueDirs(dirs []string) error {
