@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.0.54 — 2026-11-23
+
+### Fixed
+
+- Diff planning now skips unchanged non-regular entries and never
+  attaches payload readers to them. Previously only identical regular
+  files were deduplicated against the base listing, so every unchanged
+  symlink, directory and hardlink of the merged root (alpine's `bin ->
+  usr/bin`, `lib -> usr/lib`, …) was re-emitted as an addition; the
+  capture stream gave link entries a reader and layer building failed
+  with `entry "bin" of type "symlink" must not carry a reader`.
+  `BaseFile` gained the link target; `applyBaseEntry` stores the real
+  header mode for hardlinks; `plannedFromHeader` attaches a reader only
+  to regular entries.
+
 ## v0.0.53 — 2026-11-23
 
 ### Fixed
