@@ -75,6 +75,12 @@ func metaFromHeader(hdr *tar.Header, tr *tar.Reader) (FileMeta, bool, error) {
 	if err != nil {
 		return FileMeta{}, false, err
 	}
+	if name == "" {
+		// Archive root marker ("./"): not a filesystem entry. The base
+		// listing skips it the same way; indexing it here made the plan
+		// reference a member the stream layer never emits.
+		return FileMeta{}, false, nil
+	}
 	kind, known, global := captureType(hdr.Typeflag)
 	if global {
 		return FileMeta{}, false, nil
