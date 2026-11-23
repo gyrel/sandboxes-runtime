@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.0.56 — 2026-11-23
+
+### Fixed
+
+- `IndexCapture` skips the archive root marker. GNU tar run as
+  `tar -cf - -C / .` stores a "./" member; the indexer normalized it
+  to an empty path and recorded it as an entry, so the diff plan
+  referenced a member the layer stream never emits and building failed
+  with `plan references 1 entries absent from capture (first: [])` in
+  the live roundtrip. The base listing already skipped the root;
+  indexing now matches, with a regression test covering root plus a
+  regular member through the full plan/stream path.
+
 ## v0.0.55 — 2026-11-23
 
 ### Fixed

@@ -337,3 +337,37 @@ func TestNormalizeLinkTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestIndexCaptureSkipsArchiveRootMarker(t *testing.T) {
+	var b bytes.Buffer
+	tw := tar.NewWriter(&b)
+	if err := tw.WriteHeader(&tar.Header{Name: "./", Typeflag: tar.TypeDir, Mode: 0o755, Format: tar.FormatGNU}); err != nil {
+		t.Fatal(err)
+	}
+	body := "x"
+	if err := tw.WriteHeader(&tar.Header{Name: "./etc/hosts", Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(body)), Format: tar.FormatGNU}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw := b.Bytes()
+	metas, err := IndexCapture(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) != 1 || metas[0].Path != "etc/hosts" {
+		t.Fatalf("root marker indexed: %+v", metas)
+	}
+	plans, err := Diff(metas, map[string]BaseFile{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var layer bytes.Buffer
+	if _, err := LayerTarFromCapture(&layer, plans, bytes.NewReader(raw)); err != nil {
+		t.Fatalf("root marker leaked into plan: %v", err)
+	}
+}
