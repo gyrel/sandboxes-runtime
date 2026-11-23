@@ -102,6 +102,11 @@ func (c *Client) Version(ctx context.Context) error {
 	return err
 }
 
+const (
+	flagPlatform    = "--platform"
+	flagSnapshotter = "--snapshotter"
+)
+
 // EnsureImage pulls image when it is not already present.
 func (c *Client) EnsureImage(ctx context.Context, image string) error {
 	return c.EnsureImageProgress(ctx, image, nil)
@@ -124,7 +129,7 @@ func (c *Client) EnsureImageProgress(ctx context.Context, image string, onProgre
 			return nil
 		}
 	}
-	pull := []string{"images", "pull", "--platform", c.cfg.Platform, "--snapshotter", c.cfg.Snapshotter, image}
+	pull := []string{"images", "pull", flagPlatform, c.cfg.Platform, flagSnapshotter, c.cfg.Snapshotter, image}
 	if err := c.runPull(ctx, pull, onProgress); err != nil {
 		return fmt.Errorf("pull %s: %w", image, err)
 	}
@@ -263,7 +268,7 @@ func (c *Client) Run(ctx context.Context, spec RunSpec) error {
 	args := []string{
 		"run", "--detach",
 		"--runtime", c.cfg.Runtime,
-		"--snapshotter", c.cfg.Snapshotter,
+		flagSnapshotter, c.cfg.Snapshotter,
 		"--label", sandboxLabel + "=" + spec.Name,
 		"--cpus", strconv.Itoa(int(spec.CPUs)),
 		"--memory-limit", strconv.FormatUint(uint64(spec.MemoryMiB)*1024*1024, 10),
@@ -508,7 +513,12 @@ func (c *Client) ImportImage(ctx context.Context, tarPath, ref string) error {
 	if tarPath == "" || ref == "" {
 		return fmt.Errorf("import requires an archive path and an image name")
 	}
-	if _, err := c.run(ctx, "images", "import", tarPath); err != nil {
+	// Import must mirror the pull path's explicit platform/snapshotter: the
+	// managed containerd config registers the erofs snapshotter but defines
+	// no default unpack platforms, so an unflagged import aborts in the
+	// transfer unpacker ("no unpack platforms defined").
+	imp := []string{"images", "import", flagPlatform, c.cfg.Platform, flagSnapshotter, c.cfg.Snapshotter, tarPath}
+	if _, err := c.run(ctx, imp...); err != nil {
 		return fmt.Errorf("import template image: %w", err)
 	}
 	out, err := c.run(ctx, "images", "ls", "-q")

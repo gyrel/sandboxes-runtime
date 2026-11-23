@@ -24,8 +24,12 @@ func TestImportImageVerifiesReference(t *testing.T) {
 	if err := c.ImportImage(context.Background(), "/tmp/x.tar", "docker.io/library/mytpl:v1"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(seen[0], " "), "images import /tmp/x.tar") {
-		t.Fatalf("import argv=%v", seen[0])
+	joined := strings.Join(seen[0], " ")
+	if !strings.Contains(joined, "images import --platform "+c.cfg.Platform+" --snapshotter "+c.cfg.Snapshotter+" /tmp/x.tar") {
+		t.Fatalf("import argv must mirror the pull platform/snapshotter flags, got %v", seen[0])
+	}
+	if last := seen[0][len(seen[0])-1]; last != "/tmp/x.tar" {
+		t.Fatalf("tar path must stay final: %v", seen[0])
 	}
 	runner.fn = func(args []string) ([]byte, error) {
 		if strings.Contains(strings.Join(args, " "), "images ls") {

@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.0.57 — 2026-11-23
+
+### Fixed
+
+- `ctr images import` now passes the configured `--platform` and
+  `--snapshotter` like the pull path does. The managed containerd
+  registers the erofs snapshotter but defines no default unpack
+  platforms, so the unflagged import aborted with
+  "unable to initialize unpacker: no unpack platforms defined" and
+  `template save` could not record the image (live repro on daemon
+  v0.0.87). Flag spellings are shared as constants.
+
 ## v0.0.56 — 2026-11-23
 
 ### Fixed
