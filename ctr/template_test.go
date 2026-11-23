@@ -124,10 +124,10 @@ func blobDesc(data []byte) ocilayer.Descriptor {
 	return ocilayer.Descriptor{MediaType: ocilayer.MediaLayer, Digest: ocilayer.Digest("sha256:" + hex.EncodeToString(sum[:])), Size: int64(len(data))}
 }
 
-func baseConfig() []byte {
+func baseConfig(diffIDs ...string) []byte {
 	raw, _ := json.Marshal(ocilayer.Config{
 		Architecture: "arm64", OS: "linux", Created: "2026-01-01T00:00:00Z",
-		RootFS: ocilayer.RootFS{Type: "layers"},
+		RootFS: ocilayer.RootFS{Type: "layers", DiffIDs: diffIDs},
 		Config: ocilayer.DocConfig{Env: []string{"PATH=/usr/bin"}, WorkingDir: "/workspace", User: "agent"},
 	})
 	return raw
@@ -151,7 +151,7 @@ func TestSaveTemplateEndToEndWithFakes(t *testing.T) {
 		captureTars: [][]byte{capture},
 		layers:      []ocilayer.Descriptor{baseDesc},
 		blobs:       map[string][]byte{string(baseDesc.Digest): baseTar},
-		config:      baseConfig(),
+		config:      baseConfig(string(baseDesc.Digest)),
 	}
 	h := runtime.Handle{ID: "rheic-test-handle"}
 	dir := t.TempDir()

@@ -171,8 +171,11 @@ func Assemble(img Image) (*Layout, error) {
 	root := RootFS{Type: "layers", DiffIDs: make([]string, 0, len(layers))}
 	names := make([]string, 0, len(layers))
 	for _, l := range layers {
-		// diff_ids are the uncompressed digests; our layers are stored
-		// uncompressed, so the layer digest is also the diff id.
+		// diff_ids are the uncompressed digests; this fallback builds the
+		// synthetic all-uncompressed chain used by fixtures and by the
+		// empty-baseConfig path. Registry bases go through
+		// AssembleWithConfig, which preserves the base config's own
+		// uncompressed diff ids.
 		root.DiffIDs = append(root.DiffIDs, string(l.Digest))
 		hexPart := strings.TrimPrefix(string(l.Digest), "sha256:")
 		names = append(names, hexPart+"/diff")
@@ -336,19 +339,10 @@ func AssembleWithConfig(img Image, baseConfig []byte) (*Layout, error) {
 	if suffix == "" {
 		return nil, fmt.Errorf("%w: empty tag suffix", ErrInvalid)
 	}
-	var cfgDoc Config
-	if len(baseConfig) > 0 {
-		if err := json.Unmarshal(baseConfig, &cfgDoc); err != nil {
-			return nil, fmt.Errorf("parse base image config: %w", err)
-		}
-	} else {
-		fallback, err := Assemble(img)
-		if err != nil {
-			return nil, err
-		}
-		cfgDoc = fallback.Config
+	cfgDoc, err := templateConfigDoc(img, baseConfig)
+	if err != nil {
+		return nil, err
 	}
-	cfgDoc.RootFS.DiffIDs = append(append([]string{}, img.BaseDiffIDs()...), string(img.DiffLayer.Digest))
 	history := append(append([]History{}, cfgDoc.History...), History{CreatedBy: "Rheic template capture"})
 	cfgDoc.History = history
 	cfgRaw, err := json.Marshal(cfgDoc)
@@ -387,14 +381,31 @@ func AssembleWithConfig(img Image, baseConfig []byte) (*Layout, error) {
 	}, nil
 }
 
-// BaseDiffIDs extracts the existing rootfs diff ids; template layers are
-// uncompressed so layer digest equals diff id.
-func (img Image) BaseDiffIDs() []string {
-	out := make([]string, 0, len(img.BaseLayers))
-	for _, l := range img.BaseLayers {
-		out = append(out, string(l.Digest))
+// templateConfigDoc derives the template config from the base image config.
+// The base config's diff_ids are the uncompressed content digests: registry
+// layers are pulled compressed, so the layer descriptor digest (the
+// compressed blob) is NOT the diff id. Rebuilding the list from descriptors
+// made containerd abort the template import with "wrong diff id calculated
+// on extraction". The base's own diff ids are kept and only the freshly
+// built (uncompressed) diff layer is appended, whose digest is its diff id.
+// Without a base config the synthetic uncompressed fallback is used.
+func templateConfigDoc(img Image, baseConfig []byte) (Config, error) {
+	if len(baseConfig) == 0 {
+		fallback, err := Assemble(img)
+		if err != nil {
+			return Config{}, err
+		}
+		return fallback.Config, nil
 	}
-	return out
+	var cfgDoc Config
+	if err := json.Unmarshal(baseConfig, &cfgDoc); err != nil {
+		return Config{}, fmt.Errorf("parse base image config: %w", err)
+	}
+	if len(cfgDoc.RootFS.DiffIDs) != len(img.BaseLayers) {
+		return Config{}, fmt.Errorf("%w: base config has %d diff_ids for %d base layers", ErrInvalid, len(cfgDoc.RootFS.DiffIDs), len(img.BaseLayers))
+	}
+	cfgDoc.RootFS.DiffIDs = append(append([]string{}, cfgDoc.RootFS.DiffIDs...), string(img.DiffLayer.Digest))
+	return cfgDoc, nil
 }
 
 func blobHex(d Digest) string { return strings.TrimPrefix(string(d), "sha256:") }

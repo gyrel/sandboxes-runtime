@@ -227,3 +227,40 @@ func TestValidateEntryPathCharsetAllowsRealGuestPaths(t *testing.T) {
 		t.Fatal("symlink with backslash accepted")
 	}
 }
+
+func TestAssembleWithConfigPreservesBaseDiffIDsForCompressedLayers(t *testing.T) {
+	compressed := Digest("sha256:" + strings.Repeat("c", 64)) // registry blob digest
+	uncompressed := "sha256:" + strings.Repeat("d", 64)       // base config diff id
+	diff := Descriptor{MediaType: MediaLayer, Digest: Digest("sha256:" + strings.Repeat("b", 64)), Size: 128}
+	base := Descriptor{MediaType: "application/vnd.oci.image.layer.v1.tar+gzip", Digest: compressed, Size: 1024}
+	baseConfig := []byte(`{"architecture":"arm64","os":"linux","history":[{"created_by":"FROM base"}],` +
+		`"rootfs":{"type":"layers","diff_ids":["` + uncompressed + `"]}}`)
+	layout, err := AssembleWithConfig(Image{
+		BaseLayers: []Descriptor{base}, DiffLayer: diff, Tag: "mytpl:v1",
+	}, baseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := layout.Config.RootFS.DiffIDs
+	if len(ids) != 2 {
+		t.Fatalf("diff_ids=%v", ids)
+	}
+	if ids[0] != uncompressed {
+		t.Fatalf("base diff id must come from the base config, got %q want %q", ids[0], uncompressed)
+	}
+	if ids[1] != string(diff.Digest) {
+		t.Fatalf("diff layer id=%q want %q", ids[1], diff.Digest)
+	}
+	if layout.Manifest.Layers[0].Digest != compressed {
+		t.Fatalf("manifest layer digest must stay the blob digest: %v", layout.Manifest.Layers[0])
+	}
+}
+
+func TestAssembleWithConfigRejectsDiffIDCountMismatch(t *testing.T) {
+	base := Descriptor{MediaType: MediaLayer, Digest: Digest("sha256:" + strings.Repeat("a", 64)), Size: 10}
+	diff := Descriptor{MediaType: MediaLayer, Digest: Digest("sha256:" + strings.Repeat("b", 64)), Size: 5}
+	baseConfig := []byte(`{"architecture":"arm64","os":"linux","rootfs":{"type":"layers","diff_ids":[]}}`)
+	if _, err := AssembleWithConfig(Image{BaseLayers: []Descriptor{base}, DiffLayer: diff, Tag: "t:v1"}, baseConfig); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("mismatched diff_ids accepted: %v", err)
+	}
+}
