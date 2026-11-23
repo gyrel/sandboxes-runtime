@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.55 — 2026-11-23
+
+### Fixed
+
+- Hardlink targets are canonicalized across capture, base listing and
+  layer streaming. GNU tar records the target of a hardlink as it stored
+  the member itself (often with a "./" prefix), while registry layers use
+  clean relative names; the mismatch made unchanged hardlinks look
+  changed, and re-emitting them then failed path validation with
+  "bad hardlink target on usr/bin/perl5.40.1" in the live roundtrip.
+  Diff also guarantees layer self-containment: an emitted hardlink drags
+  its target member into the layer, and dangling targets (not captured,
+  under a virtual prefix, or inside an excluded directory) fail closed.
+
 ## v0.0.54 — 2026-11-23
 
 ### Fixed

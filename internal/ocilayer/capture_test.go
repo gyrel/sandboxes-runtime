@@ -244,3 +244,96 @@ func TestLayerTarFromCaptureEmitsSymlinkWithoutPayload(t *testing.T) {
 		t.Fatalf("regular lost from layer: %+v", seen)
 	}
 }
+
+func TestIndexCaptureNormalizesHardlinkTarget(t *testing.T) {
+	var b bytes.Buffer
+	tw := tar.NewWriter(&b)
+	body := "perl\n"
+	if err := tw.WriteHeader(&tar.Header{Name: "./usr/bin/perl", Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(body)), Format: tar.FormatGNU}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "./usr/bin/perl5.40.1", Typeflag: tar.TypeLink, Linkname: "./usr/bin/perl", Mode: 0o755, Format: tar.FormatGNU}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw := b.Bytes()
+	metas, err := IndexCapture(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) != 2 {
+		t.Fatalf("metas=%d", len(metas))
+	}
+	if metas[1].Path != "usr/bin/perl5.40.1" || metas[1].Type != "hardlink" || metas[1].Link != "usr/bin/perl" {
+		t.Fatalf("hardlink not normalized: %+v", metas[1])
+	}
+}
+
+func TestDiffIncludesUnchangedHardlinkTarget(t *testing.T) {
+	captured := []FileMeta{
+		{Path: "usr/bin/perl", Type: "reg", Mode: 0o755, Size: 5, Digest: Digest("sha256:" + strings.Repeat("a", 64))},
+		{Path: "usr/bin/perl5.40.1", Type: "hardlink", Mode: 0o755, Link: "usr/bin/perl"},
+	}
+	base := map[string]BaseFile{
+		"usr/bin/perl": {Path: "usr/bin/perl", Type: "reg", Mode: 0o755, Digest: Digest("sha256:" + strings.Repeat("a", 64))},
+	}
+	plans, err := Diff(captured, base, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plans) != 2 {
+		t.Fatalf("hardlink target must be dragged into the layer: %+v", plans)
+	}
+	seen := map[string]bool{}
+	for _, pl := range plans {
+		seen[pl.Emit.Path] = true
+	}
+	if !seen["usr/bin/perl"] || !seen["usr/bin/perl5.40.1"] {
+		t.Fatalf("plan=%+v", plans)
+	}
+}
+
+func TestDiffRejectsDanglingHardlinkTargets(t *testing.T) {
+	captured := []FileMeta{
+		{Path: "bin/x", Type: "hardlink", Mode: 0o755, Link: "nowhere/x"},
+	}
+	if _, err := Diff(captured, map[string]BaseFile{}, nil, nil); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("missing target accepted: %v", err)
+	}
+	virtual := []FileMeta{
+		{Path: "bin/x", Type: "hardlink", Mode: 0o755, Link: "proc/self/foo"},
+	}
+	if _, err := Diff(virtual, map[string]BaseFile{}, nil, []string{"proc"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("virtual-prefix target accepted: %v", err)
+	}
+	opaque := []FileMeta{
+		{Path: "bin/x", Type: "hardlink", Mode: 0o755, Link: "work/secret"},
+		{Path: "work/secret", Type: "reg", Mode: 0o600, Digest: Digest("sha256:" + strings.Repeat("b", 64))},
+	}
+	if _, err := Diff(opaque, map[string]BaseFile{}, []string{"work"}, nil); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("opaque-dir target accepted: %v", err)
+	}
+}
+
+func TestNormalizeLinkTarget(t *testing.T) {
+	for in, want := range map[string]string{
+		"./usr/bin/perl": "usr/bin/perl",
+		"usr/bin/perl":   "usr/bin/perl",
+		"/usr/bin/perl":  "usr/bin/perl",
+	} {
+		got, err := normalizeLinkTarget(in)
+		if err != nil || got != want {
+			t.Fatalf("normalize(%q)=%q,%v want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "../escape", "./", "a/./b", "a//b", "a/"} {
+		if _, err := normalizeLinkTarget(bad); err == nil {
+			t.Fatalf("normalize(%q) accepted", bad)
+		}
+	}
+}
