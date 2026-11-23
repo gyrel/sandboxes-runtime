@@ -140,7 +140,10 @@ func plannedFromHeader(hdr *tar.Header, want DiffEntry, tr io.Reader) (DiffEntry
 	if !ok || flag != want.Type {
 		return DiffEntry{}, fmt.Errorf("%w: capture entry %q changed shape mid-plan", ErrMalformedCapture, hdr.Name)
 	}
-	e := DiffEntry{Path: want.Path, Type: want.Type, Mode: uint32(hdr.Mode & 0o7777), Size: hdr.Size, Link: hdr.Linkname, Modified: hdr.ModTime.UTC(), Reader: tr}
+	e := DiffEntry{Path: want.Path, Type: want.Type, Mode: uint32(hdr.Mode & 0o7777), Size: hdr.Size, Link: hdr.Linkname, Modified: hdr.ModTime.UTC()}
+	// Only regular files carry payloads; links, dirs and specials must not
+	// hold a reader (validation refuses it, and the tar writer must not be
+	// advanced past a header with no data).
 	if hdr.Typeflag == tar.TypeReg {
 		e.Reader = io.LimitReader(tr, hdr.Size)
 	}

@@ -3,6 +3,7 @@ package ocilayer
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -178,5 +179,68 @@ func TestFindCapturePayload(t *testing.T) {
 func TestDiffRejectsBadOpaqueDirectory(t *testing.T) {
 	if _, err := Diff(nil, map[string]BaseFile{"x": {Path: "x", Type: "reg"}}, []string{"../escape"}, nil); err == nil {
 		t.Fatal("escaping opaque dir accepted")
+	}
+}
+
+func TestDiffSkipsUnchangedNonRegularEntries(t *testing.T) {
+	captured := []FileMeta{
+		{Path: "bin", Type: "symlink", Link: "usr/bin", Mode: 0o777},
+		{Path: "etc", Type: "dir", Mode: 0o755},
+		{Path: "home/agent/link", Type: "symlink", Link: "../escape-changed"},
+		{Path: "usr/bin/sh", Type: "hardlink", Link: "busybox", Mode: 0o755},
+	}
+	base := map[string]BaseFile{
+		"bin":             {Path: "bin", Type: "symlink", Mode: 0o777, Link: "usr/bin"},
+		"etc":             {Path: "etc", Type: "dir", Mode: 0o755},
+		"home/agent/link": {Path: "home/agent/link", Type: "symlink", Mode: 0o777, Link: "old-target"},
+		"usr/bin/sh":      {Path: "usr/bin/sh", Type: "hardlink", Mode: 0o755, Link: "busybox"},
+	}
+	plans, err := Diff(captured, base, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plans) != 1 || plans[0].Emit.Path != "home/agent/link" {
+		t.Fatalf("unchanged links/dirs must be skipped, got %+v", plans)
+	}
+}
+
+func TestLayerTarFromCaptureEmitsSymlinkWithoutPayload(t *testing.T) {
+	capture := buildCaptureTar(t, []DiffEntry{
+		{Path: "bin", Type: "symlink", Link: "usr/bin"},
+		{Path: "home/agent/marker", Type: "reg", Size: 2, Reader: strings.NewReader("ok"), Mode: 0o644},
+	})
+	captureReader := bytes.NewReader(capture)
+	metas, err := IndexCapture(captureReader, int64(len(capture)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := make([]PlannedEntry, 0, len(metas))
+	for i, m := range metas {
+		plan = append(plan, PlannedEntry{
+			Emit:         DiffEntry{Path: m.Path, Type: m.Type, Mode: m.Mode, Size: m.Size, Link: m.Link, Modified: m.Modified},
+			CaptureIndex: i,
+		})
+	}
+	var layer bytes.Buffer
+	if _, err := LayerTarFromCapture(&layer, plan, bytes.NewReader(capture)); err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(bytes.NewReader(layer.Bytes()))
+	seen := map[string]byte{}
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		seen[hdr.Name] = hdr.Typeflag
+	}
+	if seen["bin"] != tar.TypeSymlink {
+		t.Fatalf("symlink lost from layer: %+v", seen)
+	}
+	if seen["home/agent/marker"] != tar.TypeReg {
+		t.Fatalf("regular lost from layer: %+v", seen)
 	}
 }

@@ -173,9 +173,9 @@ func applyBaseEntry(listing map[string]BaseFile, hdr *tar.Header, tr io.Reader) 
 	case tar.TypeDir:
 		listing[name] = BaseFile{Path: name, Type: typeDir, Mode: uint32(hdr.Mode & 0o7777)}
 	case tar.TypeSymlink:
-		listing[name] = BaseFile{Path: name, Type: typeSymlink, Mode: 0o777}
+		listing[name] = BaseFile{Path: name, Type: typeSymlink, Mode: uint32(hdr.Mode & 0o7777), Link: hdr.Linkname}
 	case tar.TypeLink:
-		listing[name] = BaseFile{Path: name, Type: typeHardlink, Mode: 0o644}
+		listing[name] = BaseFile{Path: name, Type: typeHardlink, Mode: uint32(hdr.Mode & 0o7777), Link: hdr.Linkname}
 	default:
 		// Devices/fifos: record occupancy so a later deletion is still
 		// whiteouted; content semantics are intentionally absent.
