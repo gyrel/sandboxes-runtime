@@ -431,3 +431,28 @@ Do not treat a co-located checksum, this verifier alone, or an ad-hoc macOS
 code signature as provenance. No runtime package or install path is approved
 for production until a pinned per-platform build and attested release workflow
 exist and are validated.
+
+## Alpha bundle assembly
+
+Stage the alpha payload in a private, quiescent directory named
+`rheic-sandboxes-alpha-linux-arm64` or `rheic-sandboxes-alpha-darwin-arm64`.
+Include the daemon and launcher in `bin`, build records and patches in `build`,
+the verified native bundle in `runtime`, `README-ALPHA.md`, and an initial
+`SHA256SUMS` listing every payload file. For example:
+
+```sh
+cd /path/to/staging-parent
+find rheic-sandboxes-alpha-linux-arm64 -type f ! -name SHA256SUMS -print | LC_ALL=C sort | while IFS= read -r file; do
+  (cd rheic-sandboxes-alpha-linux-arm64 && shasum -a 256 "${file#rheic-sandboxes-alpha-linux-arm64/}")
+done > rheic-sandboxes-alpha-linux-arm64/SHA256SUMS
+python3 -I /path/to/repo/scripts/alpha/verify-alpha-package.py rheic-sandboxes-alpha-linux-arm64
+python3 -I /path/to/repo/scripts/alpha/create-alpha-archive.py rheic-sandboxes-alpha-linux-arm64 rheic-sandboxes-alpha-linux-arm64.tar.gz
+```
+
+The verifier checks the input inventory, runtime bundle and managed build
+digests, then writes canonical `SHA256SUMS`, an empty `SYMLINKS.txt`, and
+`RUNTIME-ARTIFACTS.json`. The JSON records payload paths, sizes, hashes, kinds,
+build references and limits for downstream inspection. These co-located records
+are not provenance. The archiver rechecks them and writes a checksum sidecar.
+Darwin/arm64 was proven live in the published alpha; Linux/arm64 packaging is
+new and has not yet been live-verified. Linux/amd64 and Windows are unsupported.
