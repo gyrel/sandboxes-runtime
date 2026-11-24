@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -217,20 +218,21 @@ type BaseFile struct {
 // whiteouts, except under opaque directories, which receive a single
 // opaque marker and suppress descendant whiteouts.
 // Diff plans one OCI diff layer. opaqueDirs mark excluded live directories
-// (their lower content is hidden); virtualDirs (proc, sys, dev, bundle
-// mounts) are capture-time-only prefixes: entries under them never become
-// additions, never become whiteouts and receive no opaque marker, because
-// their runtime contents are not image state.
+// (their lower content is hidden); virtualDirs (root proc, sys, dev, run) are
+// capture-time-only prefixes: entries under them never become additions,
+// never become whiteouts and receive no opaque marker, because their runtime
+// contents are not image state.
 func Diff(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtualDirs []string) ([]PlannedEntry, error) {
 	if err := validateOpaqueDirs(opaqueDirs); err != nil {
 		return nil, err
 	}
-	plans := additions(captured, base, opaqueDirs, virtualDirs)
-	plans, err := includeHardlinkTargets(plans, captured, opaqueDirs, virtualDirs)
+	types := captureTypes(captured)
+	plans := additions(captured, types, base, opaqueDirs, virtualDirs)
+	plans, err := includeHardlinkTargets(plans, captured, types, opaqueDirs, virtualDirs)
 	if err != nil {
 		return nil, err
 	}
-	plans = append(plans, removals(captured, base, opaqueDirs, virtualDirs)...)
+	plans = append(plans, removals(types, base, opaqueDirs, virtualDirs)...)
 	for _, dir := range opaqueDirs {
 		plans = append(plans, PlannedEntry{Emit: DiffEntry{Path: dir, Type: "opaque"}, CaptureIndex: -1})
 	}
@@ -244,7 +246,7 @@ func Diff(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtualDirs
 // or that lives under an excluded (opaque or virtual) prefix, cannot be
 // represented in the layer and is refused (fail closed) instead of
 // producing a template that breaks at apply or boot.
-func includeHardlinkTargets(plans []PlannedEntry, captured []FileMeta, opaqueDirs, virtualDirs []string) ([]PlannedEntry, error) {
+func includeHardlinkTargets(plans []PlannedEntry, captured []FileMeta, types map[string]string, opaqueDirs, virtualDirs []string) ([]PlannedEntry, error) {
 	index := make(map[string]int, len(captured))
 	for i, m := range captured {
 		index[m.Path] = i
@@ -277,6 +279,9 @@ func includeHardlinkTargets(plans []PlannedEntry, captured []FileMeta, opaqueDir
 		if underAnyOpaque(m.Path, opaqueDirs) {
 			return nil, fmt.Errorf("%w: hardlink target %q is inside an excluded directory", ErrInvalid, target)
 		}
+		if beneathNonDirectory(m.Path, types) {
+			return nil, fmt.Errorf("%w: hardlink target %q is inside a non-directory capture entry", ErrInvalid, target)
+		}
 		planned[target] = true
 		out = append(out, PlannedEntry{
 			Emit:         DiffEntry{Path: m.Path, Type: m.Type, Mode: m.Mode, Size: m.Size, Link: m.Link, Modified: m.Modified},
@@ -298,12 +303,47 @@ func validateOpaqueDirs(dirs []string) error {
 	return nil
 }
 
+// captureTypes indexes the captured entry type by path.
+func captureTypes(captured []FileMeta) map[string]string {
+	types := make(map[string]string, len(captured))
+	for _, m := range captured {
+		types[m.Path] = m.Type
+	}
+	return types
+}
+
+// beneathNonDirectory reports whether an ancestor of p is present in the
+// capture as a non-directory (a file or symlink replacing a directory).
+// Overlay resolves such a path to the replacement, so nothing below it in
+// the base or the capture is reachable and must not be planned.
+func beneathNonDirectory(p string, types map[string]string) bool {
+	for _, a := range ancestorPaths(p) {
+		if t, ok := types[a]; ok && t != "dir" {
+			return true
+		}
+	}
+	return false
+}
+
+// ancestorPaths returns the proper ancestor directories of a clean relative
+// path, shallowest first.
+func ancestorPaths(p string) []string {
+	var out []string
+	for i := 0; i < len(p); i++ {
+		if p[i] == '/' {
+			out = append(out, p[:i])
+		}
+	}
+	return out
+}
+
 // additions keeps captured entries that are new or changed relative to the
 // base listing and skips untouched duplicates (type+mode+content digest).
-func additions(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtualDirs []string) []PlannedEntry {
+// Entries beneath a captured non-directory are unreachable and dropped.
+func additions(captured []FileMeta, types map[string]string, base map[string]BaseFile, opaqueDirs, virtualDirs []string) []PlannedEntry {
 	plans := make([]PlannedEntry, 0, len(captured))
 	for i, m := range captured {
-		if underAnyOpaque(m.Path, opaqueDirs) || underAnyOpaque(m.Path, virtualDirs) {
+		if underAnyOpaque(m.Path, opaqueDirs) || underAnyOpaque(m.Path, virtualDirs) || beneathNonDirectory(m.Path, types) {
 			continue
 		}
 		old, existed := base[m.Path]
@@ -344,24 +384,43 @@ func unchangedBase(m FileMeta, old BaseFile) bool {
 
 // removals whiteouts base paths missing from the capture. Whiteouting a
 // base directory path removes the directory and its subtree on overlay
-// apply, so one entry per missing base path is sufficient.
-func removals(captured []FileMeta, base map[string]BaseFile, opaqueDirs, virtualDirs []string) []PlannedEntry {
-	capturedSet := make(map[string]struct{}, len(captured))
-	for _, m := range captured {
-		capturedSet[m.Path] = struct{}{}
-	}
+// apply, so one entry per missing base path is sufficient. A missing path
+// whose ancestor is also missing from the capture (and present in base) is
+// folded into a single whiteout at the highest such ancestor: a whiteout
+// inside a whiteout-ed directory has no apply semantics (erofs and overlay
+// reject it). Base paths beneath a captured non-directory are unreachable
+// and produce no whiteout.
+func removals(types map[string]string, base map[string]BaseFile, opaqueDirs, virtualDirs []string) []PlannedEntry {
 	var paths []string
 	for p := range base {
 		if underAnyOpaque(p, opaqueDirs) || underAnyOpaque(p, virtualDirs) {
 			continue
 		}
-		if _, ok := capturedSet[p]; !ok {
+		if _, ok := types[p]; !ok {
 			paths = append(paths, p)
 		}
 	}
 	slices.Sort(paths)
-	plans := make([]PlannedEntry, 0, len(paths))
+	targets := make(map[string]struct{}, len(paths))
 	for _, p := range paths {
+		if beneathNonDirectory(p, types) {
+			continue
+		}
+		target := p
+		for _, a := range ancestorPaths(p) {
+			if _, captured := types[a]; captured {
+				continue
+			}
+			if _, inBase := base[a]; inBase {
+				target = a
+				break
+			}
+		}
+		targets[target] = struct{}{}
+	}
+	ordered := slices.Sorted(maps.Keys(targets))
+	plans := make([]PlannedEntry, 0, len(ordered))
+	for _, p := range ordered {
 		plans = append(plans, PlannedEntry{Emit: DiffEntry{Path: p, Type: "whiteout"}, CaptureIndex: -1})
 	}
 	return plans

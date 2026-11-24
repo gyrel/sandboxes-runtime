@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -369,5 +370,161 @@ func TestIndexCaptureSkipsArchiveRootMarker(t *testing.T) {
 	var layer bytes.Buffer
 	if _, err := LayerTarFromCapture(&layer, plans, bytes.NewReader(raw)); err != nil {
 		t.Fatalf("root marker leaked into plan: %v", err)
+	}
+}
+
+func planKinds(plans []PlannedEntry) []string {
+	out := make([]string, 0, len(plans))
+	for _, pl := range plans {
+		out = append(out, pl.Emit.Type+":"+pl.Emit.Path)
+	}
+	return out
+}
+
+func baseFromMetas(metas []FileMeta) map[string]BaseFile {
+	base := make(map[string]BaseFile, len(metas))
+	for _, m := range metas {
+		base[m.Path] = BaseFile{Path: m.Path, Type: m.Type, Mode: m.Mode, Digest: m.Digest, Link: m.Link}
+	}
+	return base
+}
+
+func TestRemovalsFoldMissingAncestors(t *testing.T) {
+	dig := Digest("sha256:" + strings.Repeat("c", 64))
+	dir := func(p string) BaseFile { return BaseFile{Path: p, Type: "dir", Mode: 0o755} }
+	reg := func(p string) BaseFile { return BaseFile{Path: p, Type: "reg", Mode: 0o755, Digest: dig} }
+	cases := []struct {
+		name     string
+		captured []FileMeta
+		base     map[string]BaseFile
+		virtual  []string
+		want     []string
+	}{
+		{
+			name:     "missing directory folds its subtree into one whiteout",
+			captured: []FileMeta{{Path: "opt", Type: "dir", Mode: 0o755}},
+			base: map[string]BaseFile{
+				"opt":              dir("opt"),
+				"opt/tool":         dir("opt/tool"),
+				"opt/tool/bin":     dir("opt/tool/bin"),
+				"opt/tool/bin/x":   reg("opt/tool/bin/x"),
+				"opt/tool/share":   dir("opt/tool/share"),
+				"opt/tool/share/y": reg("opt/tool/share/y"),
+			},
+			want: []string{"whiteout:opt/tool"},
+		},
+		{
+			name:     "tmpfs run keeps present directory and folds its missing subtree",
+			captured: []FileMeta{{Path: "run", Type: "dir", Mode: 0o755}},
+			base: map[string]BaseFile{
+				"run":                   dir("run"),
+				"run/adduser":           reg("run/adduser"),
+				"run/lock":              reg("run/lock"),
+				"run/systemd":           dir("run/systemd"),
+				"run/systemd/container": reg("run/systemd/container"),
+			},
+			want: []string{"whiteout:run/adduser", "whiteout:run/lock", "whiteout:run/systemd"},
+		},
+		{
+			name:     "run is virtual and plans nothing",
+			captured: []FileMeta{{Path: "run", Type: "dir", Mode: 0o755}},
+			base: map[string]BaseFile{
+				"run":         dir("run"),
+				"run/adduser": reg("run/adduser"),
+				"run/systemd": dir("run/systemd"),
+			},
+			virtual: []string{"run"},
+			want:    nil,
+		},
+		{
+			name:     "directory replaced by symlink suppresses base descendants",
+			captured: []FileMeta{{Path: "a", Type: "symlink", Link: "x"}},
+			base: map[string]BaseFile{
+				"a":       dir("a"),
+				"a/b":     dir("a/b"),
+				"a/b/c":   dir("a/b/c"),
+				"a/b/c/d": reg("a/b/c/d"),
+			},
+			want: []string{"symlink:a"},
+		},
+		{
+			name: "capture entries beneath a symlink are unreachable and dropped",
+			captured: []FileMeta{
+				{Path: "a", Type: "symlink", Link: "x"},
+				{Path: "a/x", Type: "reg", Mode: 0o644, Digest: dig},
+			},
+			base: map[string]BaseFile{},
+			want: []string{"symlink:a"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plans, err := Diff(tc.captured, tc.base, nil, tc.virtual)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := planKinds(plans)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("plan=%v want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNestedSystemDirectoryNamesAreNotVirtual(t *testing.T) {
+	tree := []DiffEntry{
+		{Path: "usr", Type: "dir"},
+		{Path: "usr/include", Type: "dir"},
+		{Path: "usr/include/aarch64-linux-gnu", Type: "dir"},
+		{Path: "usr/include/aarch64-linux-gnu/x.h", Type: "reg", Size: 1, Reader: strings.NewReader("x"), Mode: 0o644},
+		{Path: "usr/include/aarch64-linux-gnu/sys", Type: "dir"},
+		{Path: "usr/include/aarch64-linux-gnu/sys/acct.h", Type: "reg", Size: 2, Reader: strings.NewReader("ac"), Mode: 0o644},
+		{Path: "usr/include/aarch64-linux-gnu/sys/auxv.h", Type: "reg", Size: 2, Reader: strings.NewReader("av"), Mode: 0o644},
+	}
+	raw := buildCaptureTar(t, tree)
+	captured, err := IndexCapture(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := baseFromMetas(captured)
+	base["sys"] = BaseFile{Path: "sys", Type: "dir", Mode: 0o755}
+	base["sys/exe"] = BaseFile{Path: "sys/exe", Type: "reg", Mode: 0o755, Digest: Digest("sha256:" + strings.Repeat("d", 64))}
+	virtual := []string{"proc", "sys", "dev", "run"}
+
+	plans, err := Diff(captured, base, nil, virtual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plans) != 0 {
+		t.Fatalf("nested sys captured and unchanged must plan nothing: %v", planKinds(plans))
+	}
+
+	// The old unanchored capture dropped the nested directory. The fold must
+	// keep that to one whiteout at the nested directory, never the per-file
+	// whiteouts inside a whiteout directory that erofs rejects.
+	var withoutNested []FileMeta
+	for _, m := range captured {
+		if !strings.HasPrefix(m.Path, "usr/include/aarch64-linux-gnu/sys") {
+			withoutNested = append(withoutNested, m)
+		}
+	}
+	plans, err = Diff(withoutNested, base, nil, virtual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"whiteout:usr/include/aarch64-linux-gnu/sys"}
+	if got := planKinds(plans); !slices.Equal(got, want) {
+		t.Fatalf("plan=%v want %v", got, want)
+	}
+}
+
+func TestDiffRejectsHardlinkTargetBeneathSymlink(t *testing.T) {
+	captured := []FileMeta{
+		{Path: "bin/x", Type: "hardlink", Mode: 0o755, Link: "a/x"},
+		{Path: "a", Type: "symlink", Link: "usr/lib"},
+		{Path: "a/x", Type: "reg", Mode: 0o755, Digest: Digest("sha256:" + strings.Repeat("e", 64))},
+	}
+	if _, err := Diff(captured, map[string]BaseFile{}, nil, nil); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("hardlink target beneath symlink accepted: %v", err)
 	}
 }

@@ -16,20 +16,22 @@ import (
 	"github.com/rheic/sandboxes-runtime/internal/ocilayer"
 )
 
-// CaptureGuestRoot runs a guest-side `tar -cf -` of the whole root
-// filesystem as root, excluding the given guest paths (validated by
-// validateTemplateExcludes upstream; re-validated here defensively). The
-// archive stream is written to stdout. Busybox and GNU tar share the
-// --exclude/-C/. grammar used here.
-// captureArgv builds the guest tar argv: caller excludes plus the virtual
-// filesystem prefixes and the docker-data default, all in relative
-// --exclude grammar over the root directory. Virtual paths must never be
-// walked (permission-denied proc nodes abort GNU tar with exit 2, and
-// /run/bundles re-exposes the base layer directories into the merged root).
+// captureArgv builds the guest tar argv: caller excludes, the root virtual
+// mount points and the docker-data default, all in --exclude grammar over
+// the root directory. Virtual paths must never be walked (permission-denied
+// proc nodes abort GNU tar with exit 2, and /run is a fresh tmpfs whose
+// runtime state is not image state).
+//
+// The virtual mounts are root-anchored ("./proc" against the "-C / ." member
+// names). Bare component patterns matched at any depth and removed nested
+// directories named like the mounts: a guest probe showed `--exclude=sys`
+// dropped ./usr/include/aarch64-linux-gnu/sys/, and the planner then emitted
+// a whiteout directory with per-file whiteouts inside it that no apply
+// implementation can consume. Caller excludes keep their existing grammar.
 func captureArgv(excludes []string) ([]string, error) {
 	argv := []string{"tar", "-cf", "-"}
 	seen := map[string]bool{}
-	for _, e := range append(append([]string{}, excludes...), templateVirtualExcludes...) {
+	for _, e := range excludes {
 		rel, err := templateExcludeArg(e)
 		if err != nil {
 			return nil, err
@@ -39,6 +41,18 @@ func captureArgv(excludes []string) ([]string, error) {
 		}
 		seen[rel] = true
 		argv = append(argv, "--exclude="+rel)
+	}
+	for _, v := range templateVirtualExcludes {
+		rel, err := templateExcludeArg(v)
+		if err != nil {
+			return nil, err
+		}
+		anchored := "./" + rel
+		if seen[anchored] {
+			continue
+		}
+		seen[anchored] = true
+		argv = append(argv, "--exclude="+anchored)
 	}
 	relDefault, err := templateExcludeArg(templateDefaultExclude)
 	if err != nil {
@@ -50,6 +64,11 @@ func captureArgv(excludes []string) ([]string, error) {
 	return append(argv, "-C", "/", "."), nil
 }
 
+// CaptureGuestRoot runs a guest-side `tar -cf -` of the whole root
+// filesystem as root, excluding the given guest paths (validated by
+// validateTemplateExcludes upstream; re-validated here defensively). The
+// archive stream is written to stdout. Busybox and GNU tar share the
+// --exclude/-C/. grammar used here.
 func (b *Backend) CaptureGuestRoot(ctx context.Context, h runtime.Handle, excludes []string, stdout io.Writer) error {
 	argv, err := captureArgv(excludes)
 	if err != nil {
