@@ -15,13 +15,16 @@ import (
 
 	runtime "github.com/rheic/sandboxes-runtime"
 	"github.com/rheic/sandboxes-runtime/internal/artifact"
+	"github.com/rheic/sandboxes-runtime/internal/journal"
 )
 
 // BackendOptions configures the runtime backend.
 type BackendOptions struct {
 	Image   string
 	FIFODir string
-	Network runtime.Network
+	// StateDir is the runtime recovery root; it defaults to /var/lib/rheic.
+	StateDir string
+	Network  runtime.Network
 	// Artifacts maps logical names of runtime-shipped binaries, such as
 	// containerd-shim-nerdbox-v1, gvproxy, and qemu, to absolute host paths.
 	// Create and Start verify every listed artifact before launching it.
@@ -36,6 +39,7 @@ type Backend struct {
 	client   *Client
 	image    string
 	fifoDir  string
+	stateDir string
 	network  runtime.Network
 	verifier *artifact.Verifier
 
@@ -112,10 +116,15 @@ func NewBackend(cfg Config, opts BackendOptions) (*Backend, error) {
 			return nil, fmt.Errorf("configure runtime artifact verification: %w", err)
 		}
 	}
+	stateDir := opts.StateDir
+	if stateDir == "" {
+		stateDir = "/var/lib/rheic"
+	}
 	return &Backend{
 		client:   client,
 		image:    opts.Image,
 		fifoDir:  opts.FIFODir,
+		stateDir: stateDir,
 		network:  opts.Network,
 		verifier: verifier,
 	}, nil
@@ -649,3 +658,11 @@ func (b *Backend) requireSkillsPin(ctx context.Context, id string) error {
 
 // ContainerID returns the containerd container id for a sandbox name.
 func ContainerID(name string) string { return "rheic-" + name }
+
+// Recover reconciles filesystem resources recorded under the backend state root.
+func (b *Backend) Recover(ctx context.Context) ([]journal.Finding, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return journal.RecoverDir(b.stateDir, time.Now)
+}
