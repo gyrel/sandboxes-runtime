@@ -20,7 +20,8 @@ import (
 
 // BackendOptions configures the runtime backend.
 type BackendOptions struct {
-	Image   string
+	Image string
+	// FIFODir defaults to the fifo directory under StateDir.
 	FIFODir string
 	// StateDir is the runtime recovery root; it defaults to /var/lib/rheic.
 	StateDir string
@@ -120,10 +121,11 @@ func NewBackend(cfg Config, opts BackendOptions) (*Backend, error) {
 	if stateDir == "" {
 		stateDir = "/var/lib/rheic"
 	}
+	fifoDir := defaultIfEmpty(opts.FIFODir, filepath.Join(stateDir, "fifo"))
 	return &Backend{
 		client:   client,
 		image:    opts.Image,
-		fifoDir:  opts.FIFODir,
+		fifoDir:  fifoDir,
 		stateDir: stateDir,
 		network:  opts.Network,
 		verifier: verifier,
@@ -179,6 +181,7 @@ func pullProgressForwarder(cfg *runtime.Config) func(Progress) {
 	}
 }
 
+//nolint:gocognit,gocyclo,cyclop,funlen // The create transaction keeps failure handling explicit.
 func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes []proxyRoute) (runtime.Handle, error) {
 	skillsPin, skillsMounts, skillsLabels, err := b.openSkills(cfg)
 	if err != nil {
@@ -197,8 +200,8 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if fifoDir == "" {
 		fifoDir = b.fifoDir
 	}
-	if err := b.client.EnsureImageProgress(ctx, image, pullProgressForwarder(cfg)); err != nil {
-		return runtime.Handle{}, err
+	if fifoDir == "" {
+		fifoDir = filepath.Join(b.stateDir, "fifo")
 	}
 	id := ContainerID(cfg.Name)
 	exists, err := b.client.containerExists(ctx, id)
@@ -207,6 +210,13 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	}
 	if exists {
 		return runtime.Handle{}, fmt.Errorf("container %s already exists", id)
+	}
+	w, err := journal.New(b.stateDir, id)
+	if err != nil {
+		return runtime.Handle{}, fmt.Errorf("start create journal: %w", err)
+	}
+	if err := b.client.EnsureImageProgress(ctx, image, pullProgressForwarder(cfg)); err != nil {
+		return runtime.Handle{}, err
 	}
 	generation, err := newCreateGeneration()
 	if err != nil {
@@ -234,12 +244,30 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if err := applySkillsMounts(&spec, workspaceMounts, skillsMounts, skillsLabels); err != nil {
 		return runtime.Handle{}, err
 	}
+	if err := w.Phase("network"); err != nil {
+		return runtime.Handle{}, err
+	}
 	attachment, err := b.startCreateNetwork(ctx, cfg)
 	if err != nil {
 		return runtime.Handle{}, err
 	}
 	spec.Annotations = append(append([]string(nil), attachment.Annotations...), spec.Annotations...)
+	if err := w.Phase("run"); err != nil {
+		if b.network != nil {
+			return runtime.Handle{}, errors.Join(err, b.stopNetwork(ctx, cfg.Name))
+		}
+		return runtime.Handle{}, err
+	}
 	if err := b.client.Run(ctx, spec); err != nil {
+		cleanupErr := b.cleanupFailedCreate(ctx, id, generation)
+		if b.network != nil {
+			cleanupErr = errors.Join(cleanupErr, b.stopNetwork(ctx, cfg.Name))
+		}
+		return runtime.Handle{}, errors.Join(err, cleanupErr)
+	}
+	if err := w.BookkeepAfterRun(id); err != nil {
+		// The container exists but the journal could not be closed; run the
+		// same failed-create cleanup rather than leaking a live container.
 		cleanupErr := b.cleanupFailedCreate(ctx, id, generation)
 		if b.network != nil {
 			cleanupErr = errors.Join(cleanupErr, b.stopNetwork(ctx, cfg.Name))

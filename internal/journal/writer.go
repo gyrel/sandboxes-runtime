@@ -17,7 +17,10 @@ type Writer struct {
 	dir     string
 	record  Record
 	markers []string
+	closed  bool
 }
+
+var errClosed = errors.New("journal writer already completed")
 
 // New starts a durable create record in stateDir.
 func New(stateDir, id string) (*Writer, error) {
@@ -43,6 +46,9 @@ func (w *Writer) Token() string { return w.record.Token }
 
 // Phase persists a phase transition.
 func (w *Writer) Phase(phase string) error {
+	if w.closed {
+		return errClosed
+	}
 	old := w.record.Phase
 	w.record.Phase = phase
 	if err := w.write(); err != nil {
@@ -54,6 +60,9 @@ func (w *Writer) Phase(phase string) error {
 
 // Track records a resource before it is exposed.
 func (w *Writer) Track(kind, nativeID, relPath string) error {
+	if w.closed {
+		return errClosed
+	}
 	w.record.Resources = append(w.record.Resources, Resource{Kind: kind, NativeID: nativeID, RelPath: relPath, Marked: true})
 	if err := w.write(); err != nil {
 		w.record.Resources = w.record.Resources[:len(w.record.Resources)-1]
@@ -64,6 +73,9 @@ func (w *Writer) Track(kind, nativeID, relPath string) error {
 
 // Marker creates a token marker exclusively and durably.
 func (w *Writer) Marker(path string) error {
+	if w.closed {
+		return errClosed
+	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600) // #nosec G304 -- path is a runtime-owned resource dir chosen by create(), never user input; O_EXCL prevents overwrite
 	if err != nil {
 		return err
@@ -79,6 +91,9 @@ func (w *Writer) Marker(path string) error {
 
 // Complete removes bookkeeping after successful transfer of ownership.
 func (w *Writer) Complete() error {
+	if w.closed {
+		return errClosed
+	}
 	for _, marker := range w.markers {
 		if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
@@ -90,7 +105,11 @@ func (w *Writer) Complete() error {
 	if err := os.Remove(filepath.Join(w.dir, "create-"+w.record.ID+".json")); err != nil {
 		return err
 	}
-	return syncDir(w.dir)
+	if err := syncDir(w.dir); err != nil {
+		return err
+	}
+	w.closed = true
+	return nil
 }
 
 // writeInitial publishes a fully synced record without replacing another attempt.
@@ -167,4 +186,17 @@ func syncDir(path string) error {
 		return fmt.Errorf("sync journal directory: %w", err)
 	}
 	return nil
+}
+
+// BookkeepAfterRun records the created container, advances to done and
+// completes the journal in one call so callers have a single failure point to
+// unwind. A failure leaves the journal on disk for recovery.
+func (w *Writer) BookkeepAfterRun(nativeID string) error {
+	if err := w.Track("container", nativeID, ""); err != nil {
+		return err
+	}
+	if err := w.Phase("done"); err != nil {
+		return err
+	}
+	return w.Complete()
 }
