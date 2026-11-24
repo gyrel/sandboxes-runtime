@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -159,9 +160,9 @@ func Assemble(img Image) (*Layout, error) {
 	if err != nil {
 		return nil, err
 	}
-	suffix := tagSuffix(strings.TrimSpace(img.Tag))
-	if suffix == "" {
-		return nil, fmt.Errorf("%w: empty tag suffix", ErrInvalid)
+	suffix, err := refNameTag(img.Tag)
+	if err != nil {
+		return nil, err
 	}
 	arch, osName := value(img.Architecture, "arm64"), value(img.OS, "linux")
 	if osName == "" || arch == "" {
@@ -204,7 +205,7 @@ func Assemble(img Image) (*Layout, error) {
 		return nil, fmt.Errorf("marshal manifest: %w", err)
 	}
 	manDesc := Descriptor{MediaType: MediaManifest, Digest: digestOf(manRaw), Size: int64(len(manRaw))}
-	index := Index{SchemaVersion: 2, MediaType: "application/vnd.oci.image.index.v1+json", Manifests: []Descriptor{manDesc}}
+	index := ociIndex(manDesc, suffix)
 	save := []dockerSaveEntry{{
 		Config:   strings.TrimPrefix(string(cfgDesc.Digest), "sha256:") + ".json",
 		RepoTags: []string{name + ":" + tagSuffix(img.Tag)},
@@ -230,6 +231,32 @@ func tagSuffix(tag string) string {
 		return strings.TrimSpace(tag[i+1:])
 	}
 	return "latest"
+}
+
+var ociTagRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$`)
+
+// refNameTag returns the tag for the index ref-name annotation. A Tag with
+// more than one colon has no unambiguous split and is refused, as is any
+// tag outside the OCI reference grammar: a malformed value would make
+// `ctr images import` register the template under the wrong name.
+func refNameTag(tag string) (string, error) {
+	tag = strings.TrimSpace(tag)
+	if strings.Count(tag, ":") > 1 {
+		return "", fmt.Errorf("%w: tag %q has more than one colon", ErrInvalid, tag)
+	}
+	suffix := tagSuffix(tag)
+	if !ociTagRe.MatchString(suffix) {
+		return "", fmt.Errorf("%w: tag %q is not a valid OCI reference tag", ErrInvalid, suffix)
+	}
+	return suffix, nil
+}
+
+// ociIndex references the manifest by digest and carries the bare tag in the
+// ref-name annotation. containerd's OCI import reads that annotation and
+// prefixes it with --base-name; the docker-save RepoTags are ignored there.
+func ociIndex(manifest Descriptor, tag string) Index {
+	manifest.Annotations = map[string]string{AnnotationRefName: tag}
+	return Index{SchemaVersion: 2, MediaType: "application/vnd.oci.image.index.v1+json", Manifests: []Descriptor{manifest}}
 }
 
 func value(v, def string) string {
@@ -335,9 +362,9 @@ func AssembleWithConfig(img Image, baseConfig []byte) (*Layout, error) {
 	if err != nil {
 		return nil, err
 	}
-	suffix := tagSuffix(strings.TrimSpace(img.Tag))
-	if suffix == "" {
-		return nil, fmt.Errorf("%w: empty tag suffix", ErrInvalid)
+	suffix, err := refNameTag(img.Tag)
+	if err != nil {
+		return nil, err
 	}
 	cfgDoc, err := templateConfigDoc(img, baseConfig)
 	if err != nil {
@@ -360,7 +387,7 @@ func AssembleWithConfig(img Image, baseConfig []byte) (*Layout, error) {
 		return nil, fmt.Errorf("marshal manifest: %w", err)
 	}
 	manDesc := Descriptor{MediaType: MediaManifest, Digest: digestOf(manRaw), Size: int64(len(manRaw))}
-	index := Index{SchemaVersion: 2, MediaType: "application/vnd.oci.image.index.v1+json", Manifests: []Descriptor{manDesc}}
+	index := ociIndex(manDesc, suffix)
 	save := []dockerSaveEntry{{
 		Config:   blobHex(cfgDesc.Digest) + ".json",
 		RepoTags: []string{name + ":" + suffix},

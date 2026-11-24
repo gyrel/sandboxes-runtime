@@ -4,6 +4,17 @@
 
 ### Fixed
 
+- `template save` imports register the normalized `<repository>:<tag>`
+  instead of a generated `import-<date>` name. The dual-layout archive's
+  OCI `index.json` manifest descriptor carries the
+  `org.opencontainers.image.ref.name` annotation with the bare tag, and
+  the import passes `--base-name` with the repository. Roundtrip v10 on
+  daemon v0.0.90 failed at verification with `archive did not provide
+  docker.io/library/rheic-tpl-v10m4:v1`: `ctr images import` read the OCI
+  layout, found no ref name, and used `import-<date>`. Tags outside the OCI
+  reference grammar are refused at assembly. Dual-layout consumers that
+  read `manifest.json` are unaffected. Templates saved before this change
+  carry no ref-name annotation; re-save them (alpha).
 - Template capture excludes are root-anchored. `proc`, `sys`, `dev` and
   `run` are excluded as `./proc`, `./sys`, `./dev` and `./run` against the
   `-C / .` member names, so only the root mount points are skipped. The

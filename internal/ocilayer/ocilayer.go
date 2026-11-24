@@ -51,6 +51,10 @@ const (
 	// AnnotationImageName carries the normalized docker.io/library tag on
 	// manifests written by the assembler.
 	AnnotationImageName = "io.containerd.image.name"
+	// AnnotationRefName is the OCI index manifest annotation that `ctr images
+	// import` reads as the bare tag, joined with --base-name. Without it the
+	// import registers the image under a generated import-<date> name.
+	AnnotationRefName = "org.opencontainers.image.ref.name"
 
 	// Entry types accepted by ValidateDiffEntry and LayerTar.
 	typeReg      = "reg"

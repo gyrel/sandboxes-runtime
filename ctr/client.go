@@ -105,6 +105,7 @@ func (c *Client) Version(ctx context.Context) error {
 const (
 	flagPlatform    = "--platform"
 	flagSnapshotter = "--snapshotter"
+	flagBaseName    = "--base-name"
 )
 
 // EnsureImage pulls image when it is not already present.
@@ -506,18 +507,24 @@ func mountSpec(m Mount) string {
 
 // ImportImage imports an OCI/docker-save tar archive into the local image
 // store under the given names, mirroring how template load consumes the
-// baseline artifact. ref is the docker.io-normalized image name the daemon
-// will boot from with --pull never semantics. Errors keep the redacted
-// run() contract.
+// baseline artifact. ref is the docker.io-normalized "<repository>:<tag>"
+// the daemon will boot from with --pull never semantics. Errors keep the
+// redacted run() contract.
 func (c *Client) ImportImage(ctx context.Context, tarPath, ref string) error {
 	if tarPath == "" || ref == "" {
 		return fmt.Errorf("import requires an archive path and an image name")
 	}
+	base, _, err := splitImageRef(ref)
+	if err != nil {
+		return fmt.Errorf("import template image: %w", err)
+	}
 	// Import must mirror the pull path's explicit platform/snapshotter: the
 	// managed containerd config registers the erofs snapshotter but defines
 	// no default unpack platforms, so an unflagged import aborts in the
-	// transfer unpacker ("no unpack platforms defined").
-	imp := []string{"images", "import", flagPlatform, c.cfg.Platform, flagSnapshotter, c.cfg.Snapshotter, tarPath}
+	// transfer unpacker ("no unpack platforms defined"). --base-name is the
+	// repository the OCI index ref-name tag is joined to; without it the
+	// import falls back to a generated import-<date> name.
+	imp := []string{"images", "import", flagPlatform, c.cfg.Platform, flagSnapshotter, c.cfg.Snapshotter, flagBaseName, base, tarPath}
 	if _, err := c.run(ctx, imp...); err != nil {
 		return fmt.Errorf("import template image: %w", err)
 	}
@@ -531,6 +538,17 @@ func (c *Client) ImportImage(ctx context.Context, tarPath, ref string) error {
 		}
 	}
 	return fmt.Errorf("import template image: archive did not provide %s", ref)
+}
+
+// splitImageRef separates "<repository>:<tag>" into the --base-name
+// repository and the tag. The split is on the last colon so a registry port
+// stays with the repository; a reference without a tag is refused.
+func splitImageRef(ref string) (string, string, error) {
+	i := strings.LastIndexByte(ref, ':')
+	if i <= 0 || i == len(ref)-1 || strings.Contains(ref[i+1:], "/") || strings.ContainsRune(ref, '@') {
+		return "", "", fmt.Errorf("image name %q must be <repository>:<tag>", ref)
+	}
+	return ref[:i], ref[i+1:], nil
 }
 
 // ExportImage writes the named image (with all its referenced layers by
