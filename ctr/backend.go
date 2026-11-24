@@ -203,10 +203,6 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if err != nil {
 		return runtime.Handle{}, err
 	}
-	attachment, err := b.startCreateNetwork(ctx, cfg)
-	if err != nil {
-		return runtime.Handle{}, err
-	}
 	spec := RunSpec{
 		ContainerID: id,
 		Name:        cfg.Name,
@@ -217,7 +213,6 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 		FIFODir:     fifoDir,
 		Env:         append([]string(nil), cfg.Env...),
 		Privileged:  cfg.Privileged,
-		Annotations: append([]string(nil), attachment.Annotations...),
 	}
 	if err := applyProxyConfig(&spec, cfg, proxyRoutes); err != nil {
 		return runtime.Handle{}, err
@@ -230,6 +225,11 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if err := applySkillsMounts(&spec, workspaceMounts, skillsMounts, skillsLabels); err != nil {
 		return runtime.Handle{}, err
 	}
+	attachment, err := b.startCreateNetwork(ctx, cfg)
+	if err != nil {
+		return runtime.Handle{}, err
+	}
+	spec.Annotations = append(append([]string(nil), attachment.Annotations...), spec.Annotations...)
 	if err := b.client.Run(ctx, spec); err != nil {
 		cleanupErr := b.cleanupFailedCreate(ctx, id, generation)
 		if b.network != nil {
