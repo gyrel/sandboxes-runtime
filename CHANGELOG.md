@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.64 — 2026-11-24
+
+### Added
+
+- `ctr.JournalFinding` alias and `ctr.JournalRecoverer` interface so module
+  consumers can name the ADR-0009 recovery API without importing internals.
+
+
 ## v0.0.61 — Unreleased
 
 ### Fixed
