@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"schema\":1,\"id\":\"rheic-example\",\"token\":\"0123456789abcdef0123456789abcdef\",\"phase\":\"network\",\"resources\":[{\"kind\":\"network\",\"native_id\":\"example\",\"rel_path\":\"\",\"marked\":false}],\"started_at_unix\":1795520000}")
