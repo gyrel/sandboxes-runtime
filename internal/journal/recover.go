@@ -24,7 +24,18 @@ const (
 	OutsideRoot    Reason = "outsideRoot"
 	ParseFailed    Reason = "parseFailed"
 	TempOrphan     Reason = "tempOrphan"
+	// ForeignResource marks a non-filesystem resource another owner controls
+	// (generation or token mismatch): recovery leaves it intact.
+	ForeignResource Reason = "foreign"
+	// UnsupportedOwnership marks a resource the recovery backend cannot attest
+	// (no NetworkAttester or backend refusal); recovery never guesses.
+	UnsupportedOwnership Reason = "unsupportedOwnership"
 )
+
+// ExternalResolver reconciles a non-filesystem resource of a journal record
+// (network attachments, containers). handled=true means the resource is
+// removed or provably absent; otherwise reason names the LEAVE decision.
+type ExternalResolver func(rec Record, res Resource) (handled bool, reason Reason, err error)
 
 // Finding describes an object left for inspection. Resource is a relative path.
 type Finding struct {
@@ -46,9 +57,17 @@ func (f Finding) Err() error { return f.Reason }
 // the token marker content before each removal, and deletes the journal only
 // after every tracked resource resolved to either removed or provably absent.
 // now is reserved for future retention policy; recovery makes no age decisions.
-//
-//nolint:gocognit,gocyclo,cyclop // Recovery keeps each journal decision explicit.
 func RecoverDir(stateDir string, now func() time.Time) ([]Finding, error) {
+	return RecoverWith(stateDir, now, nil)
+}
+
+// RecoverWith runs filesystem recovery and, when external is non-nil, hands
+// non-filesystem resources (empty rel_path kinds such as network/container)
+// to the resolver. Journals are removed only when every resource — filesystem
+// or external — resolved to removed-or-absent.
+//
+//nolint:gocognit // Recovery keeps each journal decision explicit; per-resource work lives in reconcile helpers.
+func RecoverWith(stateDir string, now func() time.Time, external ExternalResolver) ([]Finding, error) {
 	_ = now
 	root, err := os.OpenRoot(stateDir)
 	if err != nil {
@@ -93,18 +112,9 @@ func RecoverDir(stateDir string, now func() time.Time) ([]Finding, error) {
 			findings = append(findings, Finding{ID: id, Reason: ParseFailed})
 			continue
 		}
-		clean := true
-		for _, res := range rec.Resources {
-			reason, cleanupErr := recoverResource(root, res.RelPath, rec.Token)
-			if reason != "" {
-				findings = append(findings, Finding{ID: id, Resource: res.RelPath, Reason: reason})
-				clean = false
-			}
-			if cleanupErr != nil {
-				errs = append(errs, fmt.Errorf("journal %s: cleanup failed: %w", id, cleanupErr))
-				clean = false
-			}
-		}
+		clean, recFindings, recErrs := reconcileRecord(root, id, rec, external)
+		findings = append(findings, recFindings...)
+		errs = append(errs, recErrs...)
 		if clean {
 			if err := jd.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				errs = append(errs, fmt.Errorf("journal %s: unlink: %w", id, err))
@@ -290,4 +300,52 @@ func removeEntry(parent *os.Root, name string) error {
 		}
 	}
 	return parent.Remove(name)
+}
+
+// reconcileResource resolves one journal resource: non-filesystem entries
+// (empty rel_path) go to the external resolver when provided; everything
+// else gets marker-proven filesystem recovery.
+func reconcileResource(root *os.Root, id string, rec Record, res Resource, external ExternalResolver) ([]Finding, []error, bool) {
+	if res.RelPath == "" && external != nil {
+		handled, reason, extErr := external(rec, res)
+		if extErr != nil {
+			return nil, []error{fmt.Errorf("journal %s: external cleanup failed: %w", id, extErr)}, false
+		}
+		if handled {
+			return nil, nil, true
+		}
+		if reason == "" {
+			reason = ForeignResource
+		}
+		return []Finding{{ID: id, Resource: res.NativeID, Reason: reason}}, nil, false
+	}
+	reason, cleanupErr := recoverResource(root, res.RelPath, rec.Token)
+	var findings []Finding
+	var errs []error
+	clean := true
+	if reason != "" {
+		findings = append(findings, Finding{ID: id, Resource: res.RelPath, Reason: reason})
+		clean = false
+	}
+	if cleanupErr != nil {
+		errs = append(errs, fmt.Errorf("journal %s: cleanup failed: %w", id, cleanupErr))
+		clean = false
+	}
+	return findings, errs, clean
+}
+
+// reconcileRecord applies reconcileResource across a record's resources.
+func reconcileRecord(root *os.Root, id string, rec Record, external ExternalResolver) (bool, []Finding, []error) {
+	clean := true
+	var findings []Finding
+	var errs []error
+	for _, res := range rec.Resources {
+		f, e, ok := reconcileResource(root, id, rec, res, external)
+		findings = append(findings, f...)
+		errs = append(errs, e...)
+		if !ok {
+			clean = false
+		}
+	}
+	return clean, findings, errs
 }

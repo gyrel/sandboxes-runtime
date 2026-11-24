@@ -3,6 +3,7 @@ package ctr
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -507,13 +508,26 @@ func TestBackendHandle(t *testing.T) {
 }
 
 type fakeNetwork struct {
-	started    int
-	ports      []runtime.Port
-	allow      []runtime.Rule
-	deny       []runtime.Rule
-	stopped    int
-	stopErr    error
-	stopCtxErr error
+	started     int
+	ownedStarts int
+	owned       map[string]string // sandbox -> token bound via StartOwned
+	lastToken   string
+	ports       []runtime.Port
+	allow       []runtime.Rule
+	deny        []runtime.Rule
+	stopped     int
+	stopErr     error
+	stopCtxErr  error
+}
+
+func (f *fakeNetwork) StartOwned(ctx context.Context, sandbox, token string, ports []runtime.Port, allow, deny []runtime.Rule) (runtime.NetworkAttachment, error) {
+	f.ownedStarts++
+	f.lastToken = token
+	if f.owned == nil {
+		f.owned = map[string]string{}
+	}
+	f.owned[sandbox] = token
+	return f.Start(ctx, sandbox, ports, allow, deny)
 }
 
 func (f *fakeNetwork) Start(_ context.Context, _ string, ports []runtime.Port, allow, deny []runtime.Rule) (runtime.NetworkAttachment, error) {
@@ -529,10 +543,22 @@ func (f *fakeNetwork) UpdatePolicy(context.Context, string, []runtime.Port, []ru
 
 func (f *fakeNetwork) UpdatePorts(context.Context, string, []runtime.Port) error { return nil }
 
-func (f *fakeNetwork) Stop(ctx context.Context, _ string) error {
+func (f *fakeNetwork) Stop(ctx context.Context, sandbox string) error {
 	f.stopped++
 	f.stopCtxErr = ctx.Err()
+	delete(f.owned, sandbox)
 	return f.stopErr
+}
+
+func (f *fakeNetwork) AttachmentState(_ context.Context, sandbox, token string) (runtime.AttachmentState, error) {
+	bound, ok := f.owned[sandbox]
+	if !ok {
+		return runtime.AttachmentAbsent, nil
+	}
+	if token != "" && bound == token {
+		return runtime.AttachmentOwned, nil
+	}
+	return runtime.AttachmentForeign, nil
 }
 
 type gitForwarderNetwork struct {
@@ -1096,5 +1122,84 @@ func TestCreateRunFailureKeepsJournal(t *testing.T) {
 	rec, perr := journal.Parse(data)
 	if perr != nil || rec.Phase != "run" || rec.ID != "rheic-dev" {
 		t.Fatalf("journal record = %+v err=%v", rec, perr)
+	}
+}
+
+func TestRecoverStopsOwnedNetworkAndRemovesJournal(t *testing.T) {
+	state := t.TempDir()
+	runErr := errors.New("synthetic run failure")
+	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
+		if strings.Contains(strings.Join(args, " "), " run --detach") {
+			return nil, runErr
+		}
+		return nil, nil
+	}}
+	network := &fakeNetwork{}
+	backend := &Backend{stateDir: state, client: newTestClient(t, runner), image: "alpine:3.22", network: network, verifier: testArtifactVerifier(t)}
+	if _, err := backend.Create(context.Background(), runtime.Config{Name: "dev"}); !errors.Is(err, runErr) {
+		t.Fatalf("create err=%v", err)
+	}
+	if network.ownedStarts != 1 || network.lastToken == "" {
+		t.Fatalf("network not started with journal token: %+v", network)
+	}
+	findings, err := backend.Recover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("unexpected findings: %v", findings)
+	}
+	if network.stopped != 1 {
+		t.Fatalf("owned network not stopped: %+v", network)
+	}
+	if _, err := os.Stat(filepath.Join(state, "journal", "create-rheic-dev.json")); !os.IsNotExist(err) {
+		t.Fatalf("journal survived reconciliation: %v", err)
+	}
+}
+
+func TestRecoverLeavesForeignNetwork(t *testing.T) {
+	state := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(state, "journal"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	rec := journal.Record{Schema: 1, ID: "rheic-dev", Token: "0123456789abcdef0123456789abcdef", Phase: "run", Resources: []journal.Resource{{Kind: "network", NativeID: "dev", Marked: true}}, StartedAtUnix: 1}
+	data, _ := json.Marshal(rec)
+	if err := os.WriteFile(filepath.Join(state, "journal", "create-rheic-dev.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	network := &fakeNetwork{owned: map[string]string{"dev": "other-token"}}
+	backend := &Backend{stateDir: state, client: newTestClient(t, &fakeRunner{fn: func([]string) ([]byte, error) { return nil, nil }}), image: "alpine:3.22", network: network, verifier: testArtifactVerifier(t)}
+	findings, err := backend.Recover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 || findings[0].Reason != journal.ForeignResource {
+		t.Fatalf("findings=%v", findings)
+	}
+	if network.stopped != 0 {
+		t.Fatal("foreign network was stopped")
+	}
+	if _, err := os.Stat(filepath.Join(state, "journal", "create-rheic-dev.json")); err != nil {
+		t.Fatalf("journal removed despite foreign resource: %v", err)
+	}
+}
+
+func TestRecoverWithoutAttesterLeavesNetworkUnsupported(t *testing.T) {
+	state := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(state, "journal"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	rec := journal.Record{Schema: 1, ID: "rheic-dev", Token: "0123456789abcdef0123456789abcdef", Phase: "run", Resources: []journal.Resource{{Kind: "network", NativeID: "dev", Marked: true}}, StartedAtUnix: 1}
+	data, _ := json.Marshal(rec)
+	if err := os.WriteFile(filepath.Join(state, "journal", "create-rheic-dev.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	backend := &Backend{stateDir: state, client: newTestClient(t, &fakeRunner{fn: func([]string) ([]byte, error) { return nil, nil }}), image: "alpine:3.22", verifier: testArtifactVerifier(t)}
+	findings, err := backend.Recover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 || findings[0].Reason != journal.UnsupportedOwnership {
+		t.Fatalf("findings=%v", findings)
 	}
 }

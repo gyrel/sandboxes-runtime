@@ -247,7 +247,12 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if err := w.Phase("network"); err != nil {
 		return runtime.Handle{}, err
 	}
-	attachment, err := b.startCreateNetwork(ctx, cfg)
+	if b.network != nil {
+		if err := w.Track("network", cfg.Name, ""); err != nil {
+			return runtime.Handle{}, err
+		}
+	}
+	attachment, err := b.startCreateNetwork(ctx, cfg, w.Token())
 	if err != nil {
 		return runtime.Handle{}, err
 	}
@@ -265,7 +270,7 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 		}
 		return runtime.Handle{}, errors.Join(err, cleanupErr)
 	}
-	if err := w.BookkeepAfterRun(id); err != nil {
+	if err := w.BookkeepAfterRun(generation); err != nil {
 		// The container exists but the journal could not be closed; run the
 		// same failed-create cleanup rather than leaking a live container.
 		cleanupErr := b.cleanupFailedCreate(ctx, id, generation)
@@ -291,9 +296,12 @@ func applySkillsMounts(spec *RunSpec, workspaceMounts, skillsMounts []Mount, lab
 	return nil
 }
 
-func (b *Backend) startCreateNetwork(ctx context.Context, cfg *runtime.Config) (runtime.NetworkAttachment, error) {
+func (b *Backend) startCreateNetwork(ctx context.Context, cfg *runtime.Config, token string) (runtime.NetworkAttachment, error) {
 	if b.network == nil {
 		return runtime.NetworkAttachment{}, nil
+	}
+	if attester, ok := b.network.(runtime.NetworkAttester); ok {
+		return attester.StartOwned(ctx, cfg.Name, token, cfg.Ports, cfg.Allow, cfg.Deny)
 	}
 	return b.network.Start(ctx, cfg.Name, cfg.Ports, cfg.Allow, cfg.Deny)
 }
@@ -687,10 +695,75 @@ func (b *Backend) requireSkillsPin(ctx context.Context, id string) error {
 // ContainerID returns the containerd container id for a sandbox name.
 func ContainerID(name string) string { return "rheic-" + name }
 
-// Recover reconciles filesystem resources recorded under the backend state root.
+// Recover reconciles journal-recorded resources under the backend state
+// root: filesystem entries via marker proof, network attachments via the
+// optional NetworkAttester, and containers via the generation label. Every
+// branch that cannot prove ownership LEAVES the resource and reports a
+// typed finding; nothing is deleted speculatively.
 func (b *Backend) Recover(ctx context.Context) ([]journal.Finding, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return journal.RecoverDir(b.stateDir, time.Now)
+	attester, _ := b.network.(runtime.NetworkAttester)
+	return journal.RecoverWith(b.stateDir, time.Now, func(rec journal.Record, res journal.Resource) (bool, journal.Reason, error) {
+		switch res.Kind {
+		case "network":
+			return b.recoverNetwork(ctx, attester, rec, res)
+		case "container":
+			return b.recoverContainer(ctx, rec, res)
+		default:
+			return false, journal.UnsupportedOwnership, nil
+		}
+	})
+}
+
+func (b *Backend) recoverNetwork(ctx context.Context, attester runtime.NetworkAttester, rec journal.Record, res journal.Resource) (bool, journal.Reason, error) {
+	if attester == nil || b.network == nil {
+		return false, journal.UnsupportedOwnership, nil
+	}
+	state, err := attester.AttachmentState(ctx, res.NativeID, rec.Token)
+	switch {
+	case errors.Is(err, runtime.ErrOwnershipUnsupported):
+		return false, journal.UnsupportedOwnership, nil
+	case err != nil:
+		return false, "", err
+	case state == runtime.AttachmentAbsent:
+		// create() cleanup (or the host) already removed the gateway: the
+		// journal entry is stale and the resource is provably gone.
+		return true, "", nil
+	case state == runtime.AttachmentForeign:
+		return false, journal.ForeignResource, nil
+	}
+	if err := b.network.Stop(ctx, res.NativeID); err != nil {
+		return false, "", err
+	}
+	return true, "", nil
+}
+
+func (b *Backend) recoverContainer(ctx context.Context, rec journal.Record, res journal.Resource) (bool, journal.Reason, error) {
+	if res.NativeID == "" {
+		return false, journal.UnsupportedOwnership, nil
+	}
+	exists, err := b.client.containerExists(ctx, rec.ID)
+	if err != nil {
+		return false, "", err
+	}
+	if !exists {
+		return true, "", nil
+	}
+	labels, err := b.client.containerLabels(ctx, rec.ID)
+	if err != nil {
+		return false, "", err
+	}
+	if labels[generationLabel] != res.NativeID {
+		// Another create attempt owns the container now.
+		return false, journal.ForeignResource, nil
+	}
+	// A live task may or may not exist; mirror cleanupFailedCreate, which
+	// ignores task-delete absence and only surfaces container-delete errors.
+	_ = b.client.DeleteTask(ctx, rec.ID)
+	if err := b.client.DeleteContainer(ctx, rec.ID); err != nil {
+		return false, "", err
+	}
+	return true, "", nil
 }
