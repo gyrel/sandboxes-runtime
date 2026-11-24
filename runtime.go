@@ -3,6 +3,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 )
@@ -139,6 +140,39 @@ type NetworkAttachment struct {
 	GatewayIP    string
 	Annotations  []string
 }
+
+// ErrOwnershipUnsupported indicates that a network backend cannot attest
+// whether an existing attachment belongs to a given journal token. Recovery
+// treats it as a typed LEAVE: the attachment is reported, never stopped
+// speculatively.
+var ErrOwnershipUnsupported = errors.New("network ownership unsupported")
+
+// NetworkAttester is an OPTIONAL capability (repo pattern): backends that can
+// bind gateway attachments to the journal ownership token implement it.
+// Start remains the universal path; attach-time token binding and
+// token comparison are additive. Networks without this capability keep
+// working and recovery degrades to ErrOwnershipUnsupported findings.
+type NetworkAttester interface {
+	// StartOwned starts the gateway for sandbox and binds the attachment to
+	// token (the journal's 128-bit hex ownership token).
+	StartOwned(ctx context.Context, sandbox, token string, ports []Port, allow, deny []Rule) (NetworkAttachment, error)
+	// AttachmentState reports, for a sandbox named by a journal record,
+	// whether an attachment exists and belongs to token. Implementations that
+	// cannot attest MUST return ErrOwnershipUnsupported rather than guessing.
+	AttachmentState(ctx context.Context, sandbox, token string) (AttachmentState, error)
+}
+
+// AttachmentState distinguishes the three outcomes recovery must not conflate:
+// gone (journal entry is stale, safe to consider handled), owned by this
+// journal token (must be stopped), or existing under a different owner
+// (never touched).
+type AttachmentState int
+
+const (
+	AttachmentAbsent AttachmentState = iota
+	AttachmentOwned
+	AttachmentForeign
+)
 
 // Network starts and stops the host-side gateway for a sandbox.
 type Network interface {
