@@ -649,6 +649,19 @@ func TestBackendNetworkAnnotations(t *testing.T) {
 	}
 }
 
+func TestCreateInvalidProxyDoesNotStartNetwork(t *testing.T) {
+	runner := &fakeRunner{fn: func([]string) ([]byte, error) { return nil, nil }}
+	network := &fakeNetwork{}
+	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22", network: network}
+	_, err := backend.Create(context.Background(), runtime.Config{Name: "dev", ProxyPort: 1})
+	if err == nil {
+		t.Fatal("invalid proxy configuration accepted")
+	}
+	if network.started != 0 {
+		t.Fatal("network started before configuration validation")
+	}
+}
+
 func TestCreateRemovesContainerWhenRunFails(t *testing.T) {
 	listings := 0
 	generation := ""

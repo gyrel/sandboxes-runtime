@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.0.61 — Unreleased
+
+### Fixed
+
+- Validate create configuration before starting the network, avoiding a leaked
+  network when proxy or skills mount validation fails.
+
 ## v0.0.59 — Unreleased
 
 ### Fixed
