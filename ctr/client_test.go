@@ -12,6 +12,7 @@ import (
 	"time"
 
 	runtime "github.com/rheic/sandboxes-runtime"
+	"github.com/rheic/sandboxes-runtime/internal/journal"
 )
 
 type fakeRunner struct {
@@ -141,11 +142,11 @@ func TestCreateDoesNotProceedWhenContainerListFails(t *testing.T) {
 		return nil, errors.New("containerd unavailable")
 	}}
 	client := newTestClient(t, runner)
-	backend := &Backend{client: client, image: "alpine:3.22", verifier: testArtifactVerifier(t)}
+	backend := &Backend{stateDir: t.TempDir(), client: client, image: "alpine:3.22", verifier: testArtifactVerifier(t)}
 	if _, err := backend.Create(context.Background(), runtime.Config{Name: "dev"}); err == nil {
 		t.Fatal("container list failure was ignored")
 	}
-	if len(runner.calls) != 2 {
+	if len(runner.calls) != 1 {
 		t.Fatalf("runtime continued after failed list: %d calls", len(runner.calls))
 	}
 }
@@ -322,7 +323,7 @@ func TestBackendCreate(t *testing.T) {
 		return nil, nil
 	}}
 	client := newTestClient(t, runner)
-	backend := &Backend{client: client, image: "alpine:3.22", fifoDir: "/tmp/fifo", verifier: testArtifactVerifier(t)}
+	backend := &Backend{stateDir: t.TempDir(), client: client, image: "alpine:3.22", fifoDir: "/tmp/fifo", verifier: testArtifactVerifier(t)}
 	handle, err := backend.Create(context.Background(), runtime.Config{
 		Name:      "dev",
 		Workspace: "/work",
@@ -468,7 +469,7 @@ func TestBackendCreateUsesGuestWorkspaceDestination(t *testing.T) {
 	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
 		return nil, nil
 	}}
-	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22", verifier: testArtifactVerifier(t)}
+	backend := &Backend{stateDir: t.TempDir(), client: newTestClient(t, runner), image: "alpine:3.22", verifier: testArtifactVerifier(t)}
 	_, err := backend.Create(context.Background(), runtime.Config{
 		Name: "dev",
 		Workspaces: []runtime.Workspace{{
@@ -585,7 +586,7 @@ func TestCreateReportsNetworkCleanupFailure(t *testing.T) {
 		return nil, nil
 	}}
 	network := &fakeNetwork{stopErr: cleanupErr}
-	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22", network: network, verifier: testArtifactVerifier(t)}
+	backend := &Backend{stateDir: t.TempDir(), client: newTestClient(t, runner), image: "alpine:3.22", network: network, verifier: testArtifactVerifier(t)}
 	_, err := backend.Create(ctx, runtime.Config{Name: "dev"})
 	if !errors.Is(err, runErr) || !errors.Is(err, cleanupErr) {
 		t.Fatalf("runtime and cleanup errors not preserved: %v", err)
@@ -621,7 +622,7 @@ func TestBackendNetworkAnnotations(t *testing.T) {
 	}}
 	client := newTestClient(t, runner)
 	network := &fakeNetwork{}
-	backend := &Backend{client: client, image: "alpine:3.22", network: network, verifier: testArtifactVerifier(t)}
+	backend := &Backend{stateDir: t.TempDir(), client: client, image: "alpine:3.22", network: network, verifier: testArtifactVerifier(t)}
 	handle, err := backend.Create(context.Background(), runtime.Config{
 		Name: "dev", Ports: []runtime.Port{{Host: 8080, Guest: 3000, Protocol: "tcp"}},
 		Allow: []runtime.Rule{{Protocol: "tcp", CIDR: "0.0.0.0/0", Port: 80}},
@@ -652,7 +653,7 @@ func TestBackendNetworkAnnotations(t *testing.T) {
 func TestCreateInvalidProxyDoesNotStartNetwork(t *testing.T) {
 	runner := &fakeRunner{fn: func([]string) ([]byte, error) { return nil, nil }}
 	network := &fakeNetwork{}
-	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22", network: network}
+	backend := &Backend{stateDir: t.TempDir(), client: newTestClient(t, runner), image: "alpine:3.22", network: network}
 	_, err := backend.Create(context.Background(), runtime.Config{Name: "dev", ProxyPort: 1})
 	if err == nil {
 		t.Fatal("invalid proxy configuration accepted")
@@ -686,6 +687,7 @@ func TestCreateRemovesContainerWhenRunFails(t *testing.T) {
 		return nil, nil
 	}}
 	opts := testArtifactOptions(t)
+	opts.StateDir = t.TempDir()
 	opts.Image = "img"
 	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
 	if err != nil {
@@ -726,7 +728,7 @@ func TestCreateCleanupLeavesContainerOwnedByAnotherCreate(t *testing.T) {
 		}
 		return nil, nil
 	}}
-	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img"})
+	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img", StateDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,7 +778,7 @@ func TestCreateCleanupFailsClosedWithoutContainerIdentity(t *testing.T) {
 				}
 				return nil, nil
 			}}
-			backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img"})
+			backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, BackendOptions{Image: "img", StateDir: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -814,7 +816,7 @@ func TestCreateRecursiveReadOnlyMountFailsClosed(t *testing.T) {
 		}
 		return nil, nil
 	}}
-	backend := &Backend{client: newTestClient(t, runner), image: "alpine:3.22", verifier: testArtifactVerifier(t)}
+	backend := &Backend{stateDir: t.TempDir(), client: newTestClient(t, runner), image: "alpine:3.22", verifier: testArtifactVerifier(t)}
 	_, err := backend.Create(context.Background(), runtime.Config{
 		Name: "dev",
 		Workspaces: []runtime.Workspace{{
@@ -843,6 +845,7 @@ func TestCreateRecursiveReadOnlyMountFailsClosed(t *testing.T) {
 func TestCreatePassesProxyChannelAnnotation(t *testing.T) {
 	runner := &fakeRunner{}
 	opts := testArtifactOptions(t)
+	opts.StateDir = t.TempDir()
 	opts.Image = "img"
 	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
 	if err != nil {
@@ -863,6 +866,7 @@ func TestCreatePassesProxyChannelAnnotation(t *testing.T) {
 func TestCreateMountsAndStartsProxyHelper(t *testing.T) {
 	runner := &fakeRunner{}
 	opts := testArtifactOptions(t)
+	opts.StateDir = t.TempDir()
 	opts.Image = "img"
 	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
 	if err != nil {
@@ -894,6 +898,7 @@ func TestCreateMountsAndStartsProxyHelper(t *testing.T) {
 func TestCreateWithProxyRoutesStartsMultipleListeners(t *testing.T) {
 	runner := &fakeRunner{}
 	opts := testArtifactOptions(t)
+	opts.StateDir = t.TempDir()
 	opts.Image = "img"
 	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
 	if err != nil {
@@ -978,6 +983,7 @@ func TestRunRunsTrustedHelperAsRoot(t *testing.T) {
 func TestCreateMarksOnlyWorkspacesForOwnershipSemantics(t *testing.T) {
 	runner := &fakeRunner{}
 	opts := testArtifactOptions(t)
+	opts.StateDir = t.TempDir()
 	opts.Image = "img"
 	backend, err := NewBackend(Config{Socket: "/tmp/containerd.sock", CTR: "ctr"}, opts)
 	if err != nil {
@@ -1000,5 +1006,95 @@ func TestCreateMarksOnlyWorkspacesForOwnershipSemantics(t *testing.T) {
 	}
 	if strings.Contains(calls, fmt.Sprintf("io.rheic.workspace.%x", helperHash[:])) {
 		t.Fatal("proxy helper must not be marked as workspace")
+	}
+}
+
+//nolint:nestif // The two outcomes share the same fake and journal assertions.
+func TestCreateJournalLifecycle(t *testing.T) {
+	for _, failPull := range []bool{false, true} {
+		t.Run(fmt.Sprint("pull_failure_", failPull), func(t *testing.T) {
+			state := t.TempDir()
+			journalPath := filepath.Join(state, "journal", "create-rheic-dev.json")
+			runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
+				cmd := strings.Join(args, " ")
+				if strings.Contains(cmd, "images ls") {
+					data, err := os.ReadFile(journalPath)
+					if err != nil {
+						t.Fatalf("pending journal before image access: %v", err)
+					}
+					record, err := journal.Parse(data)
+					if err != nil || record.Phase != "pending" || len(record.Resources) != 0 {
+						t.Fatalf("pending record = %+v, %v", record, err)
+					}
+					if failPull {
+						return nil, errors.New("image failure")
+					}
+					return []byte("img\n"), nil
+				}
+				return nil, nil
+			}}
+			backend := &Backend{client: newTestClient(t, runner), image: "img", stateDir: state}
+			handle, err := backend.Create(context.Background(), runtime.Config{Name: "dev"})
+			if failPull {
+				if err == nil {
+					t.Fatal("expected image failure")
+				}
+				if _, err := os.Stat(journalPath); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if handle.FIFODir != filepath.Join(state, "fifo") {
+					t.Fatalf("fifo root = %q", handle.FIFODir)
+				}
+				if _, err := os.Stat(journalPath); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("journal remains: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateSuccessRemovesJournal(t *testing.T) {
+	runner := &fakeRunner{fn: func(args []string) ([]byte, error) { return nil, nil }}
+	state := t.TempDir()
+	backend := &Backend{stateDir: state, client: newTestClient(t, runner), image: "alpine:3.22", verifier: testArtifactVerifier(t)}
+	if _, err := backend.Create(context.Background(), runtime.Config{Name: "dev"}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(state, "journal"))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		return
+	}
+	if len(entries) != 0 {
+		t.Fatalf("journal entries survived success: %v", entries)
+	}
+}
+
+func TestCreateRunFailureKeepsJournal(t *testing.T) {
+	runErr := errors.New("synthetic run failure")
+	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
+		if strings.Contains(strings.Join(args, " "), " run --detach") {
+			return nil, runErr
+		}
+		return nil, nil
+	}}
+	state := t.TempDir()
+	backend := &Backend{stateDir: state, client: newTestClient(t, runner), image: "alpine:3.22", verifier: testArtifactVerifier(t)}
+	if _, err := backend.Create(context.Background(), runtime.Config{Name: "dev"}); !errors.Is(err, runErr) {
+		t.Fatalf("err=%v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(state, "journal", "create-rheic-dev.json"))
+	if err != nil {
+		t.Fatalf("journal not kept after run failure: %v", err)
+	}
+	rec, perr := journal.Parse(data)
+	if perr != nil || rec.Phase != "run" || rec.ID != "rheic-dev" {
+		t.Fatalf("journal record = %+v err=%v", rec, perr)
 	}
 }
