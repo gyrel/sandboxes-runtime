@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -150,7 +151,14 @@ func (w *Writer) write() error {
 	return syncDir(w.dir)
 }
 
+// syncDir flushes directory entries so the rename/link is durable. Windows
+// has no fsync semantics for directory handles (the API errors), so durable
+// publication there relies on the file-level Sync plus NTFS metadata
+// journaling; skipping the directory flush is documented, not silent.
 func syncDir(path string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	f, err := os.Open(path) // #nosec G304 -- journal dir owned by the backend, not user input
 	if err != nil {
 		return err
