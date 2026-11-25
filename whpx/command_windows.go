@@ -74,7 +74,7 @@ func BuildArgs(cfg Config) ([]string, error) {
 		qemuDeviceFlag, "virtio-net-pci,netdev=net0",
 		qemuDeviceFlag, "virtio-serial-pci,id=guest-serial",
 		"-chardev", "pipe,id=guest-agent,path=" + cfg.GuestPipeName,
-		qemuDeviceFlag, "virtserialport,chardev=guest-agent,name=org.rheic.guest.0",
+		qemuDeviceFlag, "virtserialport,chardev=guest-agent,name=org.gyrel.guest.0",
 		"-display", "none",
 		"-serial", "null",
 		"-monitor", "none",

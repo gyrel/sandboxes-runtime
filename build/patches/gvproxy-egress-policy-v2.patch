@@ -4107,7 +4107,7 @@ index 0000000..d09b3252e90
 +// already in the policy or the DNS query name. Schema v2 fields:
 +//
 +//	schema_version int     always egressAuditSchemaVersion (2)
-+//	event          string   "rheic.egress.decision" (or "…telemetry" markers)
++//	event          string   "gyrel.egress.decision" (or "…telemetry" markers)
 +//	component      string   always "gateway"
 +//	outcome        string   "ok" for allow, "denied" for deny
 +//	action         string   "allow" or "deny"
@@ -4465,8 +4465,8 @@ index 0000000..d09b3252e90
 +// written and allow lines are never coalesced.
 +const (
 +	egressAuditSchemaVersion        = 2
-+	egressAuditEventDecision        = "rheic.egress.decision"
-+	egressAuditEventTelemetry       = "rheic.egress.telemetry"
++	egressAuditEventDecision        = "gyrel.egress.decision"
++	egressAuditEventTelemetry       = "gyrel.egress.telemetry"
 +	egressAuditComponent            = "gateway"
 +	egressAuditQueueSize            = 256
 +	egressAuditMaxBytes       int64 = 16 << 20
@@ -6908,7 +6908,7 @@ index 0000000..373f6d2113a
 +	delete(allow, "time")
 +	wantAllow := map[string]any{
 +		"schema_version":    float64(2),
-+		"event":             "rheic.egress.decision",
++		"event":             "gyrel.egress.decision",
 +		"component":         "gateway",
 +		"outcome":           "ok",
 +		"action":            "allow",
@@ -6932,7 +6932,7 @@ index 0000000..373f6d2113a
 +	delete(deny, "time")
 +	wantDeny := map[string]any{
 +		"schema_version":    float64(2),
-+		"event":             "rheic.egress.decision",
++		"event":             "gyrel.egress.decision",
 +		"component":         "gateway",
 +		"outcome":           "denied",
 +		"action":            "deny",

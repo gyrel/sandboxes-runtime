@@ -74,8 +74,8 @@ type SkillsMount struct {
 }
 
 const (
-	SkillsStoreGuestPath  = "/run/rheic/agent-skills"
-	SkillsHelperGuestPath = "/run/rheic/skills-helper"
+	SkillsStoreGuestPath  = "/run/gyrel/agent-skills"
+	SkillsHelperGuestPath = "/run/gyrel/skills-helper"
 )
 
 // ProgressUpdate is advisory, human-facing data about a long-running create

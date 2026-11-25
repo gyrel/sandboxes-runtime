@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	runtime "github.com/rheic/sandboxes-runtime"
-	"github.com/rheic/sandboxes-runtime/internal/artifact"
+	runtime "github.com/gyrel/sandboxes-runtime"
+	"github.com/gyrel/sandboxes-runtime/internal/artifact"
 )
 
 const testShimArtifact = "containerd-shim-nerdbox-v1"
@@ -112,7 +112,7 @@ func TestStartRefusesWhenArtifactVerificationFails(t *testing.T) {
 	runner := &fakeRunner{}
 	network := &fakeNetwork{}
 	backend := &Backend{client: newTestClient(t, runner), network: network, verifier: verifier}
-	if err := backend.Start(t.Context(), runtime.Handle{ID: "rheic-dev"}); err == nil {
+	if err := backend.Start(t.Context(), runtime.Handle{ID: "gyrel-dev"}); err == nil {
 		t.Fatal("Start launched an artifact that failed verification")
 	} else {
 		requireArtifactMismatch(t, err)

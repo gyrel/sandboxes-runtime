@@ -601,7 +601,7 @@ func TestVerifyLinuxLibkrunPrefixRejectsArtifactAndMetadataDrift(t *testing.T) {
 		"rustc_version=1.90.0",
 		"gcc_version=13.3.0",
 	}, "\n") + "\n"
-	infoPath := filepath.Join(prefix, "share", "rheic-runtime", "libkrun-linux-arm64-build-info")
+	infoPath := filepath.Join(prefix, "share", "gyrel-runtime", "libkrun-linux-arm64-build-info")
 	if err := os.MkdirAll(filepath.Dir(infoPath), 0o700); err != nil {
 		t.Fatal(err)
 	}

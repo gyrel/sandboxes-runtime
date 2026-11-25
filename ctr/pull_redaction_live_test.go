@@ -3,7 +3,7 @@ package ctr
 // TestLivePullErrorRedaction verifies against a real, owned containerd that
 // a failing pull reports no host filesystem paths. It pulls a non-resolvable
 // tag only; it neither creates nor removes sandbox resources. Skipped unless
-// RHEIC_TEST_CTR_SOCKET and RHEIC_TEST_CTR_BIN are supplied.
+// GYREL_TEST_CTR_SOCKET and GYREL_TEST_CTR_BIN are supplied.
 
 import (
 	"context"
@@ -14,10 +14,10 @@ import (
 )
 
 func TestLivePullErrorRedaction(t *testing.T) {
-	socket := os.Getenv("RHEIC_TEST_CTR_SOCKET")
-	ctrBin := os.Getenv("RHEIC_TEST_CTR_BIN")
+	socket := os.Getenv("GYREL_TEST_CTR_SOCKET")
+	ctrBin := os.Getenv("GYREL_TEST_CTR_BIN")
 	if socket == "" || ctrBin == "" {
-		t.Skip("live test; requires RHEIC_TEST_CTR_SOCKET and RHEIC_TEST_CTR_BIN for an owned daemon")
+		t.Skip("live test; requires GYREL_TEST_CTR_SOCKET and GYREL_TEST_CTR_BIN for an owned daemon")
 	}
 	client, err := New(Config{Socket: socket, CTR: ctrBin})
 	if err != nil {
@@ -25,7 +25,7 @@ func TestLivePullErrorRedaction(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	err = client.EnsureImage(ctx, "docker.io/library/rheic-does-not-exist-4f1a9c:latest")
+	err = client.EnsureImage(ctx, "docker.io/library/gyrel-does-not-exist-4f1a9c:latest")
 	if err == nil {
 		t.Fatal("expected pull failure")
 	}
@@ -37,7 +37,7 @@ func TestLivePullErrorRedaction(t *testing.T) {
 			t.Fatalf("live error leaked %q: %s", leak, message)
 		}
 	}
-	if !strings.Contains(message, "images pull") || !strings.Contains(message, "rheic-does-not-exist") {
+	if !strings.Contains(message, "images pull") || !strings.Contains(message, "gyrel-does-not-exist") {
 		t.Fatalf("live error lost actionable context: %s", message)
 	}
 }

@@ -41,7 +41,7 @@ func TestRecover(t *testing.T) {
 	t.Run("owned and idempotent", func(t *testing.T) {
 		d := fixture(t, "tree")
 		put(t, d, "tree/sub/file", "x")
-		put(t, d, "tree.rheic-token", token)
+		put(t, d, "tree.gyrel-token", token)
 		for i := 0; i < 2; i++ {
 			f, e := RecoverDir(d, time.Now)
 			if e != nil || len(f) != 0 {
@@ -58,9 +58,9 @@ func TestRecover(t *testing.T) {
 	t.Run("mismatch retains journal after partial cleanup", func(t *testing.T) {
 		d := fixture(t, "a", "b")
 		put(t, d, "a", "a")
-		put(t, d, "a.rheic-token", token)
+		put(t, d, "a.gyrel-token", token)
 		put(t, d, "b", "b")
-		put(t, d, "b.rheic-token", "wrong")
+		put(t, d, "b.gyrel-token", "wrong")
 		f, e := RecoverDir(d, time.Now)
 		if e != nil || len(f) != 1 || f[0].Reason != MarkerMismatch {
 			t.Fatalf("%v %v", f, e)
@@ -79,7 +79,7 @@ func TestRecover(t *testing.T) {
 		if e := os.Symlink("target", filepath.Join(d, "link")); e != nil {
 			t.Fatal(e)
 		}
-		put(t, d, "link.rheic-token", token)
+		put(t, d, "link.gyrel-token", token)
 		f, e := RecoverDir(d, time.Now)
 		if e != nil || len(f) != 1 || f[0].Reason != SymlinkRefused {
 			t.Fatalf("%v %v", f, e)
@@ -111,6 +111,27 @@ func TestRecover(t *testing.T) {
 			t.Fatal(e)
 		}
 	})
+}
+
+// TestRecoverLegacySuffixMarkerIsForeign pins the migration semantics of the
+// .rheic-token -> .gyrel-token marker suffix rename: a marker written by a
+// previous build under the old suffix no longer matches, so recovery reports
+// the resource as a LEAVE finding and never deletes either the resource or the
+// legacy marker.
+func TestRecoverLegacySuffixMarkerIsForeign(t *testing.T) {
+	token := "0123456789abcdef0123456789abcdef"
+	d := fixture(t, "item")
+	put(t, d, "item", "content")
+	put(t, d, "item.rheic-token", token) // legacy name test
+	f, e := RecoverDir(d, time.Now)
+	if e != nil || len(f) != 1 || f[0].Reason != MarkerMissing {
+		t.Fatalf("%v %v", f, e)
+	}
+	for _, p := range []string{"item", "item.rheic-token"} {
+		if _, err := os.Stat(filepath.Join(d, p)); err != nil {
+			t.Fatalf("%s must never be deleted: %v", p, err)
+		}
+	}
 }
 func TestRecoverConcurrentUnrelatedWriter(t *testing.T) {
 	d := fixture(t)

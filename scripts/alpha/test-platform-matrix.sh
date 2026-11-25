@@ -11,7 +11,7 @@ assert m.MATRIX['darwin/arm64']==('libkrun.dylib','libkrunfw.5.dylib')
 for platform in ('windows/arm64','linux/amd64'):
  import tempfile
  with tempfile.TemporaryDirectory() as d:
-  root=pathlib.Path(d)/('rheic-sandboxes-alpha-'+platform.replace('/','-')); root.mkdir()
+  root=pathlib.Path(d)/('gyrel-sandboxes-alpha-'+platform.replace('/','-')); root.mkdir()
   try: m.verify(root)
   except ValueError as e: assert 'unsupported' in str(e), str(e)
   else: raise AssertionError(platform+' accepted')

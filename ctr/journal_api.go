@@ -3,7 +3,7 @@ package ctr
 import (
 	"context"
 
-	"github.com/rheic/sandboxes-runtime/internal/journal"
+	"github.com/gyrel/sandboxes-runtime/internal/journal"
 )
 
 // JournalFinding re-exports the journal finding type so module consumers

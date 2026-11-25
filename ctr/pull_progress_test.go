@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	runtime "github.com/rheic/sandboxes-runtime"
+	runtime "github.com/gyrel/sandboxes-runtime"
 )
 
 func TestPullTrackerCountsDistinctLayersAcrossFrames(t *testing.T) {

@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rheic/sandboxes-core/ids"
+	"github.com/gyrel/sandboxes-core/ids"
 
-	runtime "github.com/rheic/sandboxes-runtime"
-	"github.com/rheic/sandboxes-runtime/internal/artifact"
-	"github.com/rheic/sandboxes-runtime/internal/journal"
+	runtime "github.com/gyrel/sandboxes-runtime"
+	"github.com/gyrel/sandboxes-runtime/internal/artifact"
+	"github.com/gyrel/sandboxes-runtime/internal/journal"
 )
 
 // BackendOptions configures the runtime backend.
@@ -25,7 +25,7 @@ type BackendOptions struct {
 	Image string
 	// FIFODir defaults to the fifo directory under StateDir.
 	FIFODir string
-	// StateDir is the runtime recovery root; it defaults to /var/lib/rheic.
+	// StateDir is the runtime recovery root; it defaults to /var/lib/gyrel.
 	StateDir string
 	Network  runtime.Network
 	// Artifacts maps logical names of runtime-shipped binaries, such as
@@ -121,7 +121,7 @@ func NewBackend(cfg Config, opts BackendOptions) (*Backend, error) {
 	}
 	stateDir := opts.StateDir
 	if stateDir == "" {
-		stateDir = "/var/lib/rheic"
+		stateDir = "/var/lib/gyrel"
 	}
 	fifoDir := defaultIfEmpty(opts.FIFODir, filepath.Join(stateDir, "fifo"))
 	return &Backend{
@@ -240,7 +240,7 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 		Privileged:  cfg.Privileged,
 	}
 	if opID != "" {
-		spec.Labels = append(spec.Labels, "rheic.op-id="+opID)
+		spec.Labels = append(spec.Labels, "gyrel.op-id="+opID)
 	}
 	if err := applyProxyConfig(&spec, cfg, proxyRoutes); err != nil {
 		return runtime.Handle{}, err
@@ -323,7 +323,7 @@ func workspaceAnnotations(mounts []Mount) []string {
 	annotations := make([]string, 0, len(mounts))
 	for _, workspace := range mounts {
 		hash := sha256.Sum256([]byte(workspace.Destination))
-		annotations = append(annotations, fmt.Sprintf("io.rheic.workspace.%x=true", hash[:]))
+		annotations = append(annotations, fmt.Sprintf("io.gyrel.workspace.%x=true", hash[:]))
 	}
 	return annotations
 }
@@ -371,7 +371,7 @@ func workspaceMounts(cfg *runtime.Config) ([]Mount, error) {
 		}
 	}
 	if cfg.ProxyHelperPath != "" {
-		reserved = append(reserved, "/tmp/rheic-proxy-helper")
+		reserved = append(reserved, "/tmp/gyrel-proxy-helper")
 	}
 	if err := validateReservedMounts(mounts, reserved); err != nil {
 		return nil, err
@@ -420,7 +420,7 @@ func applyProxyHelper(spec *RunSpec, cfg *runtime.Config, routes []proxyRoute) e
 	}
 	spec.Mounts = append(spec.Mounts, Mount{
 		Source:      cfg.ProxyHelperPath,
-		Destination: "/tmp/rheic-proxy-helper",
+		Destination: "/tmp/gyrel-proxy-helper",
 		ReadOnly:    true,
 	})
 	// Run the trusted static helper directly as the container process. This
@@ -448,7 +448,7 @@ func validateProxyHelperConfig(cfg *runtime.Config, routes []proxyRoute) error {
 }
 
 func proxyHelperArgs(cfg *runtime.Config, routes []proxyRoute) []string {
-	args := []string{"/tmp/rheic-proxy-helper"}
+	args := []string{"/tmp/gyrel-proxy-helper"}
 	if len(routes) == 0 {
 		return append(args, "-listen", fmt.Sprintf("127.0.0.1:%d", cfg.ProxyGuestPort),
 			"-cid", "2", "-port", fmt.Sprint(cfg.ProxyPort), "-service-host", cfg.ProxyServiceHost)
@@ -580,7 +580,7 @@ func proxyChannelAnnotation(cfg *runtime.Config) (string, error) {
 	if cfg.ProxyPort < 1027 || cfg.ProxyPort > 65535 || !filepath.IsAbs(cfg.ProxySocket) || len(cfg.ProxySocket) >= 104 || strings.ContainsAny(cfg.ProxySocket, ",=\x00\r\n") {
 		return "", errors.New("proxy channel requires a port >= 1027 and a socket path")
 	}
-	return fmt.Sprintf("io.rheic.proxy=port=%d,socket=%s", cfg.ProxyPort, cfg.ProxySocket), nil
+	return fmt.Sprintf("io.gyrel.proxy=port=%d,socket=%s", cfg.ProxyPort, cfg.ProxySocket), nil
 }
 
 // Handle returns the runtime handle for a sandbox name.
@@ -597,13 +597,13 @@ func (b *Backend) Start(ctx context.Context, h runtime.Handle) error {
 		return err
 	}
 	if b.network != nil {
-		if _, err := b.network.Start(ctx, strings.TrimPrefix(h.ID, "rheic-"), h.Ports, h.Allow, h.Deny); err != nil {
+		if _, err := b.network.Start(ctx, strings.TrimPrefix(h.ID, "gyrel-"), h.Ports, h.Allow, h.Deny); err != nil {
 			return err
 		}
 	}
 	if err := b.client.StartTask(ctx, h.ID, h.FIFODir); err != nil {
 		if b.network != nil {
-			return errors.Join(err, b.stopNetwork(ctx, strings.TrimPrefix(h.ID, "rheic-")))
+			return errors.Join(err, b.stopNetwork(ctx, strings.TrimPrefix(h.ID, "gyrel-")))
 		}
 		return err
 	}
@@ -624,14 +624,14 @@ func (b *Backend) UpdatePolicy(ctx context.Context, h runtime.Handle, allow, den
 	if b.network == nil {
 		return errors.New("runtime has no network policy engine")
 	}
-	return b.network.UpdatePolicy(ctx, strings.TrimPrefix(h.ID, "rheic-"), h.Ports, allow, deny, revision)
+	return b.network.UpdatePolicy(ctx, strings.TrimPrefix(h.ID, "gyrel-"), h.Ports, allow, deny, revision)
 }
 
 func (b *Backend) UpdatePorts(ctx context.Context, h runtime.Handle, ports []runtime.Port) error {
 	if b.network == nil {
 		return errors.New("runtime has no network port engine")
 	}
-	return b.network.UpdatePorts(ctx, strings.TrimPrefix(h.ID, "rheic-"), ports)
+	return b.network.UpdatePorts(ctx, strings.TrimPrefix(h.ID, "gyrel-"), ports)
 }
 
 // SetGitDaemon delegates the optional clone-mode forward capability to the
@@ -653,7 +653,7 @@ func (b *Backend) Stop(ctx context.Context, h runtime.Handle, grace time.Duratio
 	}
 	err := b.client.StopTask(ctx, h.ID, grace)
 	if b.network != nil {
-		err = errors.Join(err, b.stopNetwork(ctx, strings.TrimPrefix(h.ID, "rheic-")))
+		err = errors.Join(err, b.stopNetwork(ctx, strings.TrimPrefix(h.ID, "gyrel-")))
 	}
 	return err
 }
@@ -676,7 +676,7 @@ func (b *Backend) Delete(ctx context.Context, h runtime.Handle) error {
 		}
 	}
 	if b.network != nil {
-		err = errors.Join(err, b.stopNetwork(ctx, strings.TrimPrefix(h.ID, "rheic-")))
+		err = errors.Join(err, b.stopNetwork(ctx, strings.TrimPrefix(h.ID, "gyrel-")))
 	}
 	if err == nil {
 		err = b.forgetSkillsPath(h.ID, labels[skillsPinPathLabel])
@@ -702,7 +702,7 @@ func (b *Backend) requireSkillsPin(ctx context.Context, id string) error {
 }
 
 // ContainerID returns the containerd container id for a sandbox name.
-func ContainerID(name string) string { return "rheic-" + name }
+func ContainerID(name string) string { return "gyrel-" + name }
 
 // Recover reconciles journal-recorded resources under the backend state
 // root: filesystem entries via marker proof, network attachments via the

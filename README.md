@@ -1,14 +1,14 @@
 # sandboxes-runtime
 
-<img src="docs/assets/rheic-shark.png" alt="Rheic shark logo" width="180">
+<img src="docs/assets/gyrel-shark.png" alt="Gyrel shark logo" width="180">
 
 
 ## Import path migration
 
-The canonical Go module path is now `github.com/rheic/sandboxes-runtime` (previously `github.com/quoiner/sandboxes-runtime`). Update imports and `go.mod` requirements when moving to a release that includes this change. The old module path is not kept as a compatibility alias.
+The canonical Go module path is now `github.com/gyrel/sandboxes-runtime` (previously `github.com/quoiner/sandboxes-runtime`). Update imports and `go.mod` requirements when moving to a release that includes this change. The old module path is not kept as a compatibility alias.
 
 `runtime.Config` supports the additive per-VM service-proxy channel. A proxy
-helper is mounted read-only at `/tmp/rheic-proxy-helper` and runs directly as
+helper is mounted read-only at `/tmp/gyrel-proxy-helper` and runs directly as
 the container process, so proxy-enabled images do not need `/bin/sh`; the helper
 accepts only the configured upstream host and talks to the host broker over the
 shim's vsock bridge. The helper path must be

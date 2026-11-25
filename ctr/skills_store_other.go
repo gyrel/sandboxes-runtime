@@ -26,7 +26,7 @@ func pinSkillsStore(path string) (*skillsPin, error) {
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("store must be a real directory")
 	}
-	dir, err := os.MkdirTemp("", "rheic-skills-store-")
+	dir, err := os.MkdirTemp("", "gyrel-skills-store-")
 	if err != nil {
 		return nil, errors.New("create private skills snapshot")
 	}

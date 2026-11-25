@@ -7,8 +7,8 @@ export WORK ROOT
 python3 -I - <<'PY'
 import os, pathlib, hashlib, json
 w=pathlib.Path(os.environ['WORK'])
-r=w/'rheic-sandboxes-alpha-linux-arm64'
-names=['README-ALPHA.md','bin/rheicd-launch.sh','bin/rsbx','bin/sandboxesd','build/manifest.yaml','build/patches/a.patch','runtime/assets/nerdbox-kernel-arm64','runtime/assets/nerdbox-rootfs-arm64.erofs']+['runtime/bin/'+x for x in ['containerd','ctr','containerd-shim-nerdbox-v1','gvproxy']]+['runtime/lib/libkrun.so.1.19.6','runtime/lib/libkrunfw.so.5.6.2']
+r=w/'gyrel-sandboxes-alpha-linux-arm64'
+names=['README-ALPHA.md','bin/gyreld-launch.sh','bin/rsbx','bin/sandboxesd','build/manifest.yaml','build/patches/a.patch','runtime/assets/nerdbox-kernel-arm64','runtime/assets/nerdbox-rootfs-arm64.erofs']+['runtime/bin/'+x for x in ['containerd','ctr','containerd-shim-nerdbox-v1','gvproxy']]+['runtime/lib/libkrun.so.1.19.6','runtime/lib/libkrunfw.so.5.6.2']
 for n in names:
  p=r/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(n+'\n')
 h=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
@@ -17,7 +17,7 @@ entries=[{'path':str(p.relative_to(r/'runtime')),'sha256':h(p),'size':p.stat().s
 (r/'runtime/bundle.json').write_text(json.dumps({'platform':'linux/arm64','files':entries}))
 (r/'SHA256SUMS').write_text(''.join(h(p)+'  '+str(p.relative_to(r))+'\n' for p in sorted(r.rglob('*')) if p.is_file()))
 PY
-B="$WORK/rheic-sandboxes-alpha-linux-arm64"
+B="$WORK/gyrel-sandboxes-alpha-linux-arm64"
 python3 -I "$ROOT/scripts/alpha/verify-alpha-package.py" "$B"
 python3 -I "$ROOT/scripts/alpha/verify-alpha-package.py" "$B"
 # Positive control for check mode on the canonical (regenerated) inventories.

@@ -44,7 +44,7 @@ func pinSkillsStore(path string) (*skillsPin, error) {
 // with EIO during the export; a bind mount keeps the pinned inode reachable by
 // a stable path that the shim can share.
 func bindSkillsPin(store *os.File) (string, error) {
-	dir, err := os.MkdirTemp("", "rheic-skills-pin-")
+	dir, err := os.MkdirTemp("", "gyrel-skills-pin-")
 	if err != nil {
 		return "", errors.New("create shared skills pin directory")
 	}

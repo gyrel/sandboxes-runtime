@@ -49,12 +49,12 @@ func TestImportImageBaseNameExcludesTag(t *testing.T) {
 		wantBase string
 		wantErr  bool
 	}{
-		{ref: "docker.io/library/rheic-tpl-x:v1", wantBase: "docker.io/library/rheic-tpl-x"},
-		{ref: "docker.io/library/rheic-tpl-x:v1.2-rc_3", wantBase: "docker.io/library/rheic-tpl-x"},
+		{ref: "docker.io/library/gyrel-tpl-x:v1", wantBase: "docker.io/library/gyrel-tpl-x"},
+		{ref: "docker.io/library/gyrel-tpl-x:v1.2-rc_3", wantBase: "docker.io/library/gyrel-tpl-x"},
 		{ref: "localhost:5000/team/tpl:v1", wantBase: "localhost:5000/team/tpl"},
-		{ref: "docker.io/library/rheic-tpl-x", wantErr: true},
+		{ref: "docker.io/library/gyrel-tpl-x", wantErr: true},
 		{ref: "localhost:5000/team/tpl", wantErr: true},
-		{ref: "docker.io/library/rheic-tpl-x:", wantErr: true},
+		{ref: "docker.io/library/gyrel-tpl-x:", wantErr: true},
 		{ref: ":v1", wantErr: true},
 		{ref: "docker.io/library/x@sha256:" + strings.Repeat("a", 64), wantErr: true},
 	} {

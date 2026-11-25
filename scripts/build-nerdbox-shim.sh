@@ -41,7 +41,7 @@ case "$HOST_OS" in
     ;;
 esac
 "$ROOT/scripts/verify-pinned-source.sh" "$NERDBOX_SRC" 28c86e8e16c62a08079531ebe99e24a7bdad3d62
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/rheic-nerdbox-build.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/gyrel-nerdbox-build.XXXXXX")
 OUT_TMP=
 cleanup() {
   if [ -n "$OUT_TMP" ]; then

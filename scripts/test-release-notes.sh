@@ -3,7 +3,7 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 extract="$root/scripts/extract-release-notes.sh"
-tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/rheic-release-notes.XXXXXX")
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/gyrel-release-notes.XXXXXX")
 trap 'rm -rf "$tmp_dir"' EXIT
 
 fixture="$tmp_dir/CHANGELOG.md"

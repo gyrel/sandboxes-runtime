@@ -31,7 +31,7 @@ def safe(name):
 def verify(root, write=True):
     if root.is_symlink() or not root.is_dir():
         raise ValueError('root: expected real directory')
-    match = re.fullmatch(r'rheic-sandboxes-alpha-([a-z0-9]+)-([a-z0-9]+)', root.name)
+    match = re.fullmatch(r'gyrel-sandboxes-alpha-([a-z0-9]+)-([a-z0-9]+)', root.name)
     if not match:
         raise ValueError('root: unsafe directory name')
     platform = '/'.join(match.groups())
@@ -53,7 +53,7 @@ def verify(root, write=True):
                 files[rel] = path
             elif not stat.S_ISDIR(info.st_mode):
                 raise ValueError(f'type: unsupported {rel}')
-    required = ['README-ALPHA.md', 'bin/rheicd-launch.sh', 'bin/rsbx', 'bin/sandboxesd',
+    required = ['README-ALPHA.md', 'bin/gyreld-launch.sh', 'bin/rsbx', 'bin/sandboxesd',
                 'build/manifest.yaml', 'build/digests.yaml', 'runtime/bundle.json',
                 'runtime/assets/nerdbox-kernel-arm64', 'runtime/assets/nerdbox-rootfs-arm64.erofs']
     required += ['runtime/bin/' + n for n in ('containerd', 'ctr', 'containerd-shim-nerdbox-v1', 'gvproxy')]

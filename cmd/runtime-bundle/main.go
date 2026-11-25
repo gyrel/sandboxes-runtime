@@ -1,5 +1,5 @@
 // Command runtime-bundle creates or checks a content inventory for a staged
-// Rheic runtime bundle. It does not verify GitHub artifact attestations.
+// Gyrel runtime bundle. It does not verify GitHub artifact attestations.
 package main
 
 import (
@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/rheic/sandboxes-runtime/bundle"
+	"github.com/gyrel/sandboxes-runtime/bundle"
 )
 
 func main() {

@@ -1,9 +1,9 @@
 [Unit]
-Description=Rheic SandBoxes alpha daemon
+Description=Gyrel SandBoxes alpha daemon
 
 [Service]
 Type=simple
-Environment=RHEIC_STATE_DIR=%h/.local/state/rheic-sandboxes
+Environment=GYREL_STATE_DIR=%h/.local/state/gyrel-sandboxes
 ExecStart=/bin/sh @LAUNCHER@
 Restart=on-failure
 KillMode=mixed

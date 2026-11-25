@@ -8,15 +8,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	runtime "github.com/rheic/sandboxes-runtime"
+	runtime "github.com/gyrel/sandboxes-runtime"
 )
 
 const (
-	skillsLabel              = "io.rheic.skills"
-	skillsStoreIdentityLabel = "io.rheic.skills.store"
-	skillsPinPathLabel       = "io.rheic.skills.pin"
-	skillsPinDirPrefix       = "rheic-skills-pin-"
-	skillsSnapshotDirPrefix  = "rheic-skills-store-"
+	skillsLabel              = "io.gyrel.skills"
+	skillsStoreIdentityLabel = "io.gyrel.skills.store"
+	skillsPinPathLabel       = "io.gyrel.skills.pin"
+	skillsPinDirPrefix       = "gyrel-skills-pin-"
+	skillsSnapshotDirPrefix  = "gyrel-skills-store-"
 )
 
 // skillsPin holds the opened store directory used as a bind source. The path
@@ -200,7 +200,7 @@ func stageSkillsHelper(path string) (string, string, error) {
 	if err != nil || !os.SameFile(info, opened) {
 		return "", "", errors.New("shared skills helper changed while opening")
 	}
-	dir, err := os.MkdirTemp("", "rheic-skills-helper-")
+	dir, err := os.MkdirTemp("", "gyrel-skills-helper-")
 	if err != nil {
 		return "", "", errors.New("create private skills helper directory")
 	}

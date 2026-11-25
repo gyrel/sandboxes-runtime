@@ -11,7 +11,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/rheic/sandboxes-core/ids"
+	"github.com/gyrel/sandboxes-core/ids"
 )
 
 const (

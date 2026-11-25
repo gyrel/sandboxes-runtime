@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/rheic/sandboxes-runtime/internal/artifact"
+	"github.com/gyrel/sandboxes-runtime/internal/artifact"
 )
 
 func main() {

@@ -6,9 +6,9 @@
 #
 # Example:
 #   scripts/update-artifact-digests.sh \
-#     containerd-shim-nerdbox-v1=/opt/rheic/bin/containerd-shim-nerdbox-v1 \
-#     gvproxy=/opt/rheic/bin/gvproxy \
-#     qemu=/opt/rheic/bin/qemu-system-x86_64
+#     containerd-shim-nerdbox-v1=/opt/gyrel/bin/containerd-shim-nerdbox-v1 \
+#     gvproxy=/opt/gyrel/bin/gvproxy \
+#     qemu=/opt/gyrel/bin/qemu-system-x86_64
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 if [ "$#" -eq 0 ]; then

@@ -13,8 +13,8 @@ import (
 	"path"
 	"strings"
 
-	runtime "github.com/rheic/sandboxes-runtime"
-	"github.com/rheic/sandboxes-runtime/internal/ocilayer"
+	runtime "github.com/gyrel/sandboxes-runtime"
+	"github.com/gyrel/sandboxes-runtime/internal/ocilayer"
 )
 
 // TemplateRuntime is the seam SaveTemplate/LoadTemplate need from the
@@ -199,7 +199,7 @@ func SaveTemplate(ctx context.Context, rt TemplateRuntime, h runtime.Handle, opt
 // captureAndIndex streams the guest archive into a private temp file and
 // returns its indexed contents. The caller owns removing the file.
 func captureAndIndex(ctx context.Context, rt TemplateRuntime, h runtime.Handle, opts TemplateSaveOptions) ([]ocilayer.FileMeta, string, error) {
-	captureFile, err := os.CreateTemp("", "rheic-template-capture-")
+	captureFile, err := os.CreateTemp("", "gyrel-template-capture-")
 	if err != nil {
 		return nil, "", fmt.Errorf("create capture temp: %w", err)
 	}
@@ -254,7 +254,7 @@ func resolveBase(ctx context.Context, rt TemplateRuntime, image string) ([]ocila
 // buildTemplateLayer streams the planned layer into a temp file and returns
 // its content descriptor. The caller owns removing the file.
 func buildTemplateLayer(capturePath string, plan []ocilayer.PlannedEntry) (ocilayer.Descriptor, string, error) {
-	layerFile, err := os.CreateTemp("", "rheic-template-layer-")
+	layerFile, err := os.CreateTemp("", "gyrel-template-layer-")
 	if err != nil {
 		return ocilayer.Descriptor{}, "", fmt.Errorf("create layer temp: %w", err)
 	}
@@ -289,7 +289,7 @@ func buildTemplateLayer(capturePath string, plan []ocilayer.PlannedEntry) (ocila
 }
 
 func writeTemplateArchive(ctx context.Context, rt TemplateRuntime, layout *ocilayer.Layout, baseLayers []ocilayer.Descriptor, diffDesc ocilayer.Descriptor, layerPath string) (int64, string, error) {
-	importFile, err := os.CreateTemp("", "rheic-template-import-")
+	importFile, err := os.CreateTemp("", "gyrel-template-import-")
 	if err != nil {
 		return 0, "", fmt.Errorf("create import temp: %w", err)
 	}
