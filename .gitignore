@@ -6,3 +6,5 @@ coverage.out
 .idea/
 .vscode/
 .DS_Store
+
+.obs-build/
