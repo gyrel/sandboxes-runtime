@@ -32,6 +32,17 @@ field() {
   awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); count++ } END { if (count != 1) exit 1 }' "$INFO"
 }
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    echo "a SHA-256 tool (sha256sum or shasum) is required" >&2
+    return 1
+  fi
+}
+
 verify_digest() {
   name=$1
   path=$2
@@ -40,7 +51,7 @@ verify_digest() {
     *[!0-9a-f]*|'') echo "invalid $name digest in build metadata" >&2; exit 1 ;;
   esac
   [ "${#expected}" -eq 64 ] || { echo "invalid $name digest length" >&2; exit 1; }
-  actual=$(sha256sum "$path" | awk '{print $1}')
+  actual=$(sha256_file "$path")
   [ "$actual" = "$expected" ] || { echo "$name digest does not match build metadata" >&2; exit 1; }
 }
 
@@ -53,7 +64,7 @@ verify_library() {
     *[!0-9a-f]*|'') echo "invalid $name digest in build metadata" >&2; exit 1 ;;
   esac
   [ "${#expected}" -eq 64 ] || { echo "invalid $name digest length" >&2; exit 1; }
-  actual=$(sha256sum "$path" | awk '{print $1}')
+  actual=$(sha256_file "$path")
   [ "$actual" = "$expected" ] || { echo "$name library digest does not match build metadata" >&2; exit 1; }
 }
 
