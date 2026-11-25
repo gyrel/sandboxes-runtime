@@ -1,8 +1,12 @@
 package journal
 
 import (
+	"encoding/json"
 	"strings"
+
 	"testing"
+
+	"github.com/rheic/sandboxes-core/ids"
 )
 
 const validRecord = `{"schema":1,"id":"create-1","token":"0123456789abcdef0123456789abcdef","phase":"run","resources":[{"kind":"fifo","native_id":"id","rel_path":"run/fifo","marked":true}],"started_at_unix":1730000000}`
@@ -36,4 +40,36 @@ func FuzzJournalParse(f *testing.F) {
 	f.Add([]byte(validRecord))
 	f.Add([]byte(`{"schema":1`))
 	f.Fuzz(func(t *testing.T, data []byte) { _, _ = Parse(data) })
+}
+
+func TestOperationIDRoundTrip(t *testing.T) {
+	old, err := Parse([]byte(validRecord))
+	if err != nil || old.OpID != "" {
+		t.Fatalf("old record: %+v, %v", old, err)
+	}
+	for _, id := range []string{"", ids.NewOpID()} {
+		rec := old
+		rec.Schema = 2
+		rec.OpID = id
+		data, err := json.Marshal(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := Parse(data)
+		if err != nil || got.OpID != id {
+			t.Fatalf("round trip: %+v, %v", got, err)
+		}
+	}
+	for _, id := range []string{"bad", ids.NewReqID()} {
+		rec := old
+		rec.Schema = 2
+		rec.OpID = id
+		data, err := json.Marshal(rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Parse(data); err == nil {
+			t.Fatalf("accepted %q", id)
+		}
+	}
 }

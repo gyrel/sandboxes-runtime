@@ -24,11 +24,16 @@ var errClosed = errors.New("journal writer already completed")
 
 // New starts a durable create record in stateDir.
 func New(stateDir, id string) (*Writer, error) {
+	return NewWithOpID(stateDir, id, "")
+}
+
+// NewWithOpID starts a create record with an optional validated operation ID.
+func NewWithOpID(stateDir, id, opID string) (*Writer, error) {
 	var token [16]byte
 	if _, err := rand.Read(token[:]); err != nil {
 		return nil, err
 	}
-	w := &Writer{dir: filepath.Join(stateDir, "journal"), record: Record{Schema: 1, ID: id, Token: hex.EncodeToString(token[:]), Phase: "pending", Resources: []Resource{}, StartedAtUnix: time.Now().Unix()}}
+	w := &Writer{dir: filepath.Join(stateDir, "journal"), record: Record{Schema: 2, ID: id, OpID: opID, Token: hex.EncodeToString(token[:]), Phase: "pending", Resources: []Resource{}, StartedAtUnix: time.Now().Unix()}}
 	if err := w.record.Validate(); err != nil {
 		return nil, err
 	}

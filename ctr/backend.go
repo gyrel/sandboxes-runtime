@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rheic/sandboxes-core/ids"
+
 	runtime "github.com/rheic/sandboxes-runtime"
 	"github.com/rheic/sandboxes-runtime/internal/artifact"
 	"github.com/rheic/sandboxes-runtime/internal/journal"
@@ -211,7 +213,11 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if exists {
 		return runtime.Handle{}, fmt.Errorf("container %s already exists", id)
 	}
-	w, err := journal.New(b.stateDir, id)
+	opID, _ := ids.FromContext(ctx)
+	if ids.Validate(opID) != nil || !strings.HasPrefix(opID, "op_") {
+		opID = ""
+	}
+	w, err := journal.NewWithOpID(b.stateDir, id, opID)
 	if err != nil {
 		return runtime.Handle{}, fmt.Errorf("start create journal: %w", err)
 	}
@@ -232,6 +238,9 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 		FIFODir:     fifoDir,
 		Env:         append([]string(nil), cfg.Env...),
 		Privileged:  cfg.Privileged,
+	}
+	if opID != "" {
+		spec.Labels = append(spec.Labels, "rheic.op-id="+opID)
 	}
 	if err := applyProxyConfig(&spec, cfg, proxyRoutes); err != nil {
 		return runtime.Handle{}, err

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rheic/sandboxes-core/ids"
+
 	runtime "github.com/rheic/sandboxes-runtime"
 	"github.com/rheic/sandboxes-runtime/internal/journal"
 )
@@ -1201,5 +1203,38 @@ func TestRecoverWithoutAttesterLeavesNetworkUnsupported(t *testing.T) {
 	}
 	if len(findings) != 1 || findings[0].Reason != journal.UnsupportedOwnership {
 		t.Fatalf("findings=%v", findings)
+	}
+}
+
+func TestCreateOperationID(t *testing.T) {
+	valid := ids.NewOpID()
+	for _, tc := range []struct{ name, id, want string }{
+		{"valid", valid, valid}, {"missing", "", ""}, {"invalid", "op_INVALID", ""}, {"request ID", ids.NewReqID(), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := t.TempDir()
+			runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
+				if strings.Contains(strings.Join(args, " "), "images ls") {
+					data, err := os.ReadFile(filepath.Join(state, "journal", "create-rheic-dev.json"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					rec, err := journal.Parse(data)
+					if err != nil || rec.OpID != tc.want {
+						t.Fatalf("journal op ID = %q, err = %v", rec.OpID, err)
+					}
+				}
+				return nil, nil
+			}}
+			backend := &Backend{stateDir: state, client: newTestClient(t, runner), image: "alpine:3.22"}
+			_, err := backend.Create(ids.WithOpID(context.Background(), tc.id), runtime.Config{Name: "dev"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := labelValue(runner.calls[len(runner.calls)-1], "rheic.op-id")
+			if got != tc.want {
+				t.Fatalf("label = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
