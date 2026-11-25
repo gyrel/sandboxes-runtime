@@ -22,7 +22,7 @@ func TestBuildArgsRequiresValidResourcesAndLoopback(t *testing.T) {
 
 	base := Config{
 		KernelPath: artifacts[0], InitrdPath: artifacts[1], RootDiskPath: artifacts[2],
-		NetworkEndpoint: "127.0.0.1:54321", GuestPipeName: "rheic-guest-pipe-0123456789",
+		NetworkEndpoint: "127.0.0.1:54321", GuestPipeName: "gyrel-guest-pipe-0123456789",
 		CPUs: 2, MemoryMiB: 1024,
 	}
 	valid, err := BuildArgs(base)
@@ -50,7 +50,7 @@ func TestBuildArgsRequiresValidResourcesAndLoopback(t *testing.T) {
 		{name: "directory root disk", mutate: func(c *Config) { c.RootDiskPath = t.TempDir() }},
 		{name: "wildcard network", mutate: func(c *Config) { c.NetworkEndpoint = "0.0.0.0:54321" }},
 		{name: "invalid network port", mutate: func(c *Config) { c.NetworkEndpoint = "127.0.0.1:0" }},
-		{name: "pipe traversal", mutate: func(c *Config) { c.GuestPipeName = `rheic-guest-..\pipe\target` }},
+		{name: "pipe traversal", mutate: func(c *Config) { c.GuestPipeName = `gyrel-guest-..\pipe\target` }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -74,7 +74,7 @@ func TestBuildArgsEncodesRootDiskPath(t *testing.T) {
 	}
 	cfg := Config{
 		KernelPath: artifacts[0], InitrdPath: artifacts[1], RootDiskPath: artifacts[2],
-		NetworkEndpoint: "127.0.0.1:54321", GuestPipeName: "rheic-guest-pipe-0123456789",
+		NetworkEndpoint: "127.0.0.1:54321", GuestPipeName: "gyrel-guest-pipe-0123456789",
 		CPUs: 1, MemoryMiB: 512,
 	}
 	args, err := BuildArgs(cfg)

@@ -16,7 +16,7 @@ import (
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"github.com/rheic/sandboxes-runtime/internal/ocilayer"
+	"github.com/gyrel/sandboxes-runtime/internal/ocilayer"
 )
 
 // ErrDigestMismatch is returned when a content-store blob read back does not

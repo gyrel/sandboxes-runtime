@@ -97,7 +97,7 @@ func TestCommandErrorsRedactEnvValues(t *testing.T) {
 				}
 			}
 			wantCall := strings.Join([]string{
-				"ctr", "--address", "/tmp/containerd.sock", "--namespace", "rheic",
+				"ctr", "--address", "/tmp/containerd.sock", "--namespace", "gyrel",
 				"run", "--env", "API_KEY=topsecret", "--env-file=/run/secret.env", "image",
 			}, " ")
 			if got := strings.Join(runner.calls[0], " "); got != wantCall {

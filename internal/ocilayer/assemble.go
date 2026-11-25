@@ -185,7 +185,7 @@ func Assemble(img Image) (*Layout, error) {
 	for range img.BaseLayers {
 		history = append(history, History{CreatedBy: "FROM base"})
 	}
-	history = append(history, History{CreatedBy: "Rheic template capture"})
+	history = append(history, History{CreatedBy: "Gyrel template capture"})
 	cfgDoc := Config{
 		Architecture: arch, OS: osName, Created: value(img.Created, "1970-01-01T00:00:00Z"),
 		History: history, RootFS: root,
@@ -370,7 +370,7 @@ func AssembleWithConfig(img Image, baseConfig []byte) (*Layout, error) {
 	if err != nil {
 		return nil, err
 	}
-	history := append(append([]History{}, cfgDoc.History...), History{CreatedBy: "Rheic template capture"})
+	history := append(append([]History{}, cfgDoc.History...), History{CreatedBy: "Gyrel template capture"})
 	cfgDoc.History = history
 	cfgRaw, err := json.Marshal(cfgDoc)
 	if err != nil {

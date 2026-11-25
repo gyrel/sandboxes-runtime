@@ -10,12 +10,12 @@ is converted to a deny.
 Append-only JSONL, one object per line, at the `auditLog` path configured in the egress
 policy. Written with the file or directory created `0600`.
 
-### Decision records (`event: rheic.egress.decision`)
+### Decision records (`event: gyrel.egress.decision`)
 
 | Field | Type | When |
 | --- | --- | --- |
 | `schema_version` | int | always `2` |
-| `event` | string | always `"rheic.egress.decision"` |
+| `event` | string | always `"gyrel.egress.decision"` |
 | `component` | string | always `"gateway"` |
 | `time` | string | RFC3339Nano UTC, stamped at record time |
 | `outcome` | string | `"ok"` for allow, `"denied"` for deny |
@@ -33,7 +33,7 @@ policy. Written with the file or directory created `0600`.
 | `rule` | string, optional | matched rule ID or rule expression; `revoke:<rule>` for policy-revision revocations |
 | `count` | number, optional | only on coalesced deny lines: merged repeats inside the window |
 
-### Telemetry records (`event: rheic.egress.telemetry`)
+### Telemetry records (`event: gyrel.egress.telemetry`)
 
 Same envelope. Used for the queue-full and size-cap markers (`action: "audit-incomplete"`)
 and flow-revocation records. `reason` carries `size-limit` or `queue-full: dropped N`.

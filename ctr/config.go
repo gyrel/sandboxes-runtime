@@ -21,7 +21,7 @@ func (c Config) withDefaults() (Config, error) {
 		c.CTR = "ctr"
 	}
 	if c.Namespace == "" {
-		c.Namespace = "rheic"
+		c.Namespace = "gyrel"
 	}
 	if c.Runtime == "" {
 		c.Runtime = "io.containerd.nerdbox.v1"

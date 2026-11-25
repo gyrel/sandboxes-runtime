@@ -53,7 +53,7 @@ if [ "$actual_patch_sha" != "$PATCH_SHA256" ]; then
 fi
 "$ROOT/scripts/verify-pinned-source.sh" "$NERDBOX_SRC" "$NERDBOX_COMMIT"
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/rheic-nerdbox-rootfs.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/gyrel-nerdbox-rootfs.XXXXXX")
 OUT_TMP=
 cleanup() {
 	if [ -n "$OUT_TMP" ]; then

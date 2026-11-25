@@ -20,7 +20,7 @@ func TestWriterLifecycle(t *testing.T) {
 	if err := w.Track("file", "item", "item"); err != nil {
 		t.Fatal(err)
 	}
-	marker := filepath.Join(dir, "item.rheic-token")
+	marker := filepath.Join(dir, "item.gyrel-token")
 	if err := w.Marker(marker); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestBookkeepAfterRunAndClosedGuard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.BookkeepAfterRun("rheic-a"); err != nil {
+	if err := w.BookkeepAfterRun("gyrel-a"); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.Phase("late"); !errors.Is(err, errClosed) {

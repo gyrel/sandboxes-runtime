@@ -42,13 +42,13 @@ for tool in git make curl sha256sum strip cargo; do
   command -v "$tool" >/dev/null 2>&1 || { echo "required tool not found: $tool" >&2; exit 1; }
 done
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/rheic-libkrun-linux.XXXXXX")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/gyrel-libkrun-linux.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT INT TERM
 # Rust embeds source paths in release binaries. Normalize only this isolated,
 # randomly named checkout so independent builds produce identical artifacts.
 RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=$WORK=/usr/src"
 export RUSTFLAGS
-INFO_DIR=$LIBKRUN_PREFIX/share/rheic-runtime
+INFO_DIR=$LIBKRUN_PREFIX/share/gyrel-runtime
 
 checkout_source() {
   source_url=$1

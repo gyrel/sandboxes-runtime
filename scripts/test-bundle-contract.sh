@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/rheic-runtime-bundle-contract.XXXXXX")"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/gyrel-runtime-bundle-contract.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 root="$tmp/linux-arm64"

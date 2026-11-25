@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	runtime "github.com/rheic/sandboxes-runtime"
+	runtime "github.com/gyrel/sandboxes-runtime"
 
-	"github.com/rheic/sandboxes-runtime/internal/ocilayer"
+	"github.com/gyrel/sandboxes-runtime/internal/ocilayer"
 )
 
 type fakeRuntime struct {
@@ -153,7 +153,7 @@ func TestSaveTemplateEndToEndWithFakes(t *testing.T) {
 		blobs:       map[string][]byte{string(baseDesc.Digest): baseTar},
 		config:      baseConfig(string(baseDesc.Digest)),
 	}
-	h := runtime.Handle{ID: "rheic-test-handle"}
+	h := runtime.Handle{ID: "gyrel-test-handle"}
 	dir := t.TempDir()
 	out := filepath.Join(dir, "tpl.tar")
 	summary, err := SaveTemplate(context.Background(), rt, h, TemplateSaveOptions{
@@ -266,7 +266,7 @@ func findBlob(entries map[string][]byte, want string) ([]byte, bool) {
 
 func TestSaveTemplateValidationGuards(t *testing.T) {
 	rt := &fakeRuntime{}
-	h := runtime.Handle{ID: "rheic-x"}
+	h := runtime.Handle{ID: "gyrel-x"}
 	if _, err := SaveTemplate(context.Background(), rt, h, TemplateSaveOptions{Tag: "", BaseImage: "x"}); err == nil {
 		t.Fatal("empty tag accepted")
 	}

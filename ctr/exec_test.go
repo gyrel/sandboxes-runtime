@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	runtime "github.com/rheic/sandboxes-runtime"
+	runtime "github.com/gyrel/sandboxes-runtime"
 )
 
 func TestExecPassesArgumentsWithoutShell(t *testing.T) {
@@ -26,13 +26,13 @@ func TestExecPassesArgumentsWithoutShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	code, err := backend.Exec(context.Background(), runtime.Handle{ID: "rheic-example", FIFODir: "/tmp/fifo"}, runtime.ExecRequest{
-		Argv: []string{"printf", "$(touch /tmp/never-created-by-rheic)"}, Workdir: "/workspace", Stdout: &stdout, Stderr: &stderr,
+	code, err := backend.Exec(context.Background(), runtime.Handle{ID: "gyrel-example", FIFODir: "/tmp/fifo"}, runtime.ExecRequest{
+		Argv: []string{"printf", "$(touch /tmp/never-created-by-gyrel)"}, Workdir: "/workspace", Stdout: &stdout, Stderr: &stderr,
 	})
 	if err != nil || code != 0 {
 		t.Fatalf("exec = %d, %v", code, err)
 	}
-	for _, want := range []string{"tasks\nexec\n", "--fifo-dir\n/tmp/fifo\n", "--cwd\n/workspace\n", "rheic-example\nprintf\n$(touch /tmp/never-created-by-rheic)\n"} {
+	for _, want := range []string{"tasks\nexec\n", "--fifo-dir\n/tmp/fifo\n", "--cwd\n/workspace\n", "gyrel-example\nprintf\n$(touch /tmp/never-created-by-gyrel)\n"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("missing %q in %q", want, stdout.String())
 		}
@@ -52,12 +52,12 @@ func TestExecRejectsInvalidInput(t *testing.T) {
 		req    runtime.ExecRequest
 	}{
 		{runtime.Handle{ID: "-other"}, runtime.ExecRequest{Argv: []string{"true"}}},
-		{runtime.Handle{ID: "rheic-x"}, runtime.ExecRequest{}},
-		{runtime.Handle{ID: "rheic-x"}, runtime.ExecRequest{Argv: []string{"true"}, Workdir: "relative"}},
-		{runtime.Handle{ID: "rheic-x"}, runtime.ExecRequest{Argv: []string{"true", "bad\x00arg"}}},
-		{runtime.Handle{ID: "rheic-x"}, runtime.ExecRequest{Argv: []string{"true"}, Env: []string{"A=1"}}},
-		{runtime.Handle{ID: "rheic-x"}, runtime.ExecRequest{Argv: []string{"true"}, User: "0:0"}},
-		{runtime.Handle{ID: "rheic-x"}, runtime.ExecRequest{Argv: []string{"true"}, User: "root"}},
+		{runtime.Handle{ID: "gyrel-x"}, runtime.ExecRequest{}},
+		{runtime.Handle{ID: "gyrel-x"}, runtime.ExecRequest{Argv: []string{"true"}, Workdir: "relative"}},
+		{runtime.Handle{ID: "gyrel-x"}, runtime.ExecRequest{Argv: []string{"true", "bad\x00arg"}}},
+		{runtime.Handle{ID: "gyrel-x"}, runtime.ExecRequest{Argv: []string{"true"}, Env: []string{"A=1"}}},
+		{runtime.Handle{ID: "gyrel-x"}, runtime.ExecRequest{Argv: []string{"true"}, User: "0:0"}},
+		{runtime.Handle{ID: "gyrel-x"}, runtime.ExecRequest{Argv: []string{"true"}, User: "root"}},
 	} {
 		if _, err := backend.Exec(context.Background(), tc.handle, tc.req); err == nil || strings.Contains(err.Error(), "/does/not/exist") {
 			t.Fatalf("invalid request was not rejected before starting ctr: %v", err)
@@ -76,7 +76,7 @@ func TestExecReportsExitAndCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handle, req := runtime.Handle{ID: "rheic-example"}, runtime.ExecRequest{Argv: []string{"false"}}
+	handle, req := runtime.Handle{ID: "gyrel-example"}, runtime.ExecRequest{Argv: []string{"false"}}
 	code, err := backend.Exec(context.Background(), handle, req)
 	if code != 7 || err == nil {
 		t.Fatalf("ambiguous ctr exit = %d, %v", code, err)
@@ -95,10 +95,10 @@ func TestExecCancellationTargetsGuestProcess(t *testing.T) {
 			dir := t.TempDir()
 			program := filepath.Join(dir, "fake-ctr")
 			ready, killLog := filepath.Join(dir, "ready"), filepath.Join(dir, "kill")
-			t.Setenv("RHEIC_TEST_READY", ready)
-			t.Setenv("RHEIC_TEST_KILL_LOG", killLog)
-			t.Setenv("RHEIC_TEST_KILL_FAIL", fmt.Sprint(failKill))
-			script := "#!/bin/sh\ncase \"$*\" in\n*'tasks kill'*) printf '%s' \"$*\" > \"$RHEIC_TEST_KILL_LOG\"; [ \"$RHEIC_TEST_KILL_FAIL\" = false ]; exit $? ;;\n*) touch \"$RHEIC_TEST_READY\"; exec sleep 30 ;;\nesac\n"
+			t.Setenv("GYREL_TEST_READY", ready)
+			t.Setenv("GYREL_TEST_KILL_LOG", killLog)
+			t.Setenv("GYREL_TEST_KILL_FAIL", fmt.Sprint(failKill))
+			script := "#!/bin/sh\ncase \"$*\" in\n*'tasks kill'*) printf '%s' \"$*\" > \"$GYREL_TEST_KILL_LOG\"; [ \"$GYREL_TEST_KILL_FAIL\" = false ]; exit $? ;;\n*) touch \"$GYREL_TEST_READY\"; exec sleep 30 ;;\nesac\n"
 			if err := os.WriteFile(program, []byte(script), 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -110,7 +110,7 @@ func TestExecCancellationTargetsGuestProcess(t *testing.T) {
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				_, err := backend.Exec(ctx, runtime.Handle{ID: "rheic-owned"}, runtime.ExecRequest{Argv: []string{"sleep"}})
+				_, err := backend.Exec(ctx, runtime.Handle{ID: "gyrel-owned"}, runtime.ExecRequest{Argv: []string{"sleep"}})
 				done <- err
 			}()
 			deadline := time.Now().Add(5 * time.Second)
@@ -129,7 +129,7 @@ func TestExecCancellationTargetsGuestProcess(t *testing.T) {
 				t.Fatalf("unexpected cancellation result: %v", err)
 			}
 			data, err := os.ReadFile(killLog)
-			if err != nil || !strings.Contains(string(data), "tasks kill --signal SIGKILL --exec-id rheic-exec-") || !strings.Contains(string(data), "rheic-owned") {
+			if err != nil || !strings.Contains(string(data), "tasks kill --signal SIGKILL --exec-id gyrel-exec-") || !strings.Contains(string(data), "gyrel-owned") {
 				t.Fatalf("guest kill not directed to exec: %q, %v", data, err)
 			}
 		})
@@ -156,7 +156,7 @@ func TestClassifyStartError(t *testing.T) {
 		ok      bool
 	}{
 		{"OCI runtime exec failed: executable file `missing` not found in $PATH: No such file or directory", 127, true},
-		{"OCI runtime exec failed: executable file `/rheic-nonexistent-command` not found: No such file or directory", 127, true},
+		{"OCI runtime exec failed: executable file `/gyrel-nonexistent-command` not found: No such file or directory", 127, true},
 		{"unrelated file not found: No such file or directory", 0, false},
 		{"OCI runtime exec failed: the path `/etc/passwd` exists but it is not executable: Operation not permitted", 127, true},
 		{"synthetic unrelated start failure", 0, false},

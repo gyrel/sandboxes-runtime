@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/rheic/sandboxes-runtime/internal/manifest"
+	"github.com/gyrel/sandboxes-runtime/internal/manifest"
 )
 
 const digestFileVersion = 1

@@ -13,18 +13,18 @@ Run `scripts/verify-libkrun-linux-prefix.sh` on the libkrun prefix before
 assembly. Follow the alpha bundle assembly and verifier instructions in
 [build/README.md](build/README.md#alpha-bundle-assembly); the verifier produces
 `RUNTIME-ARTIFACTS.json` and checks `build/digests.yaml`. Stage the Linux
-launcher as `bin/rheicd-launch.sh`. It reads those records for managed daemon
+launcher as `bin/gyreld-launch.sh`. It reads those records for managed daemon
 arguments. Install e2fsprogs and ensure `mkfs.ext4` is on PATH.
 
 For a package path without spaces or sed metacharacters, substitute the absolute
 launcher path in the user unit, then reload systemd:
 
 ```sh
-sed 's|@LAUNCHER@|/absolute/path/to/bin/rheicd-launch.sh|g' deploy/systemd/rheic-sandboxes.service > ~/.config/systemd/user/rheic-sandboxes.service
+sed 's|@LAUNCHER@|/absolute/path/to/bin/gyreld-launch.sh|g' deploy/systemd/gyrel-sandboxes.service > ~/.config/systemd/user/gyrel-sandboxes.service
 systemctl --user daemon-reload
 ```
 
 The unit uses shared `/tmp` for the managed socket contract. State and logs are
-under `RHEIC_STATE_DIR`. A rootful deployment needs an appropriately adapted
+under `GYREL_STATE_DIR`. A rootful deployment needs an appropriately adapted
 system service and native-host validation; do not treat this user template as a
 working rootful installation.

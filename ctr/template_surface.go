@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	runtime "github.com/rheic/sandboxes-runtime"
+	runtime "github.com/gyrel/sandboxes-runtime"
 )
 
 // SaveTemplate implements runtime.TemplateBackend.

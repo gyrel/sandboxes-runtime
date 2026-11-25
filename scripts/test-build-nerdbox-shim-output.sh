@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/rheic-shim-output-test.XXXXXX")
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/gyrel-shim-output-test.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 printf 'preserve-me\n' >"$TMP/target"

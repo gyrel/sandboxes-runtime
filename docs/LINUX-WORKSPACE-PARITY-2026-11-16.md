@@ -41,7 +41,7 @@ with an annotation, but selects libkrun's workspace semantics only on macOS:
 
 ```go
 workspace := runtime.GOOS == "darwin" &&
-    b.Spec.Annotations[fmt.Sprintf("io.rheic.workspace.%x", hash[:])] == "true"
+    b.Spec.Annotations[fmt.Sprintf("io.gyrel.workspace.%x", hash[:])] == "true"
 ```
 
 Guest user selection is separate from the mount. `Run` adds `--user 0:0` only
@@ -98,7 +98,7 @@ The Linux kernel then treats ACLs as opaque xattrs:
 - `getfacl` still works because it reads the `system.posix_acl_access` xattr
   directly.
 
-This is a libkrun/virtiofs limitation, not a Rheic mount-rendering bug. The live
+This is a libkrun/virtiofs limitation, not a Gyrel mount-rendering bug. The live
 test asserts mode-based isolation unconditionally and skips the ACL allow/deny
 assertions with this exact reason when the guest mount type is `virtiofs`.
 
@@ -120,7 +120,7 @@ containerd/shim for the isolation and ownership checks.
 `ctr/workspace_linux_live_test.go` is guarded by:
 
 ```go
-//go:build linux && rheic_linux_workspace
+//go:build linux && gyrel_linux_workspace
 ```
 
 The tests create owned sandboxes, so they are opt-in. They do not run under a
@@ -130,13 +130,13 @@ plain `go test ./...`.
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `RHEIC_TEST_CTR_SOCKET` | yes | containerd socket used by `ctr`/the native client |
-| `RHEIC_TEST_IMAGE` | yes | preloaded image with the guest tools below |
-| `RHEIC_TEST_CTR` | no | `ctr` binary; defaults to `ctr` on `PATH` |
-| `RHEIC_TEST_RUNTIME` | no | runtime name; defaults to `io.containerd.nerdbox.v1` |
-| `RHEIC_TEST_SNAPSHOTTER` | no | snapshotter; defaults to `erofs` |
-| `RHEIC_TEST_PLATFORM` | no | defaults to `linux/<GOARCH>` |
-| `RHEIC_TEST_FIFO_DIR` | no | FIFO directory; defaults to the test temp directory |
+| `GYREL_TEST_CTR_SOCKET` | yes | containerd socket used by `ctr`/the native client |
+| `GYREL_TEST_IMAGE` | yes | preloaded image with the guest tools below |
+| `GYREL_TEST_CTR` | no | `ctr` binary; defaults to `ctr` on `PATH` |
+| `GYREL_TEST_RUNTIME` | no | runtime name; defaults to `io.containerd.nerdbox.v1` |
+| `GYREL_TEST_SNAPSHOTTER` | no | snapshotter; defaults to `erofs` |
+| `GYREL_TEST_PLATFORM` | no | defaults to `linux/<GOARCH>` |
+| `GYREL_TEST_FIFO_DIR` | no | FIFO directory; defaults to the test temp directory |
 
 The test process must be able to use the containerd socket and the runtime
 assets. Run it as root when you want the guest-created ownership check to run;
@@ -157,8 +157,8 @@ that already contains those tools (for example a Debian/Ubuntu image with
 `acl` and `attr` installed):
 
 ```sh
-ctr --address "$RHEIC_TEST_CTR_SOCKET" --namespace rheic images import image.tar
-export RHEIC_TEST_IMAGE=localhost/rheic-workspace-live:20261116
+ctr --address "$GYREL_TEST_CTR_SOCKET" --namespace gyrel images import image.tar
+export GYREL_TEST_IMAGE=localhost/gyrel-workspace-live:20261116
 ```
 
 The image is only a userspace source; the workspace itself is the virtiofs
@@ -170,19 +170,19 @@ Cross-compile the gated test binary on the development host:
 
 ```sh
 GOWORK=off GOOS=linux GOARCH=arm64 \
-  go test -c -tags rheic_linux_workspace ./ctr \
+  go test -c -tags gyrel_linux_workspace ./ctr \
   -o /tmp/ctr-workspace-live.test
 ```
 
 Copy it to the Linux host/VM, set the variables, and run:
 
 ```sh
-export RHEIC_TEST_CTR_SOCKET=/run/rheic/containerd.sock
-export RHEIC_TEST_IMAGE=localhost/rheic-workspace-live:20261116
-export RHEIC_TEST_CTR=/opt/rheic/ctr
-export RHEIC_TEST_RUNTIME=io.containerd.nerdbox.v1
-export RHEIC_TEST_SNAPSHOTTER=erofs
-export RHEIC_TEST_PLATFORM=linux/arm64
+export GYREL_TEST_CTR_SOCKET=/run/gyrel/containerd.sock
+export GYREL_TEST_IMAGE=localhost/gyrel-workspace-live:20261116
+export GYREL_TEST_CTR=/opt/gyrel/ctr
+export GYREL_TEST_RUNTIME=io.containerd.nerdbox.v1
+export GYREL_TEST_SNAPSHOTTER=erofs
+export GYREL_TEST_PLATFORM=linux/arm64
 
 sudo -E /tmp/ctr-workspace-live.test \
   -test.v -test.run '^TestLinuxWorkspace'
@@ -202,10 +202,10 @@ The existing Linux runtime recipe is `build/README.md` plus the alpha bundle's
 guest, because libkrun's Linux backend requires KVM:
 
 ```sh
-limactl start --name rheic-linux --vm-type=qemu --cpus=4 --memory=8 \
+limactl start --name gyrel-linux --vm-type=qemu --cpus=4 --memory=8 \
   --mount "$PWD:w" template://ubuntu-24.04
-limactl shell rheic-linux -- sudo apt-get update
-limactl shell rheic-linux -- sudo apt-get install -y acl attr
+limactl shell gyrel-linux -- sudo apt-get update
+limactl shell gyrel-linux -- sudo apt-get install -y acl attr
 ```
 
 If the guest reports `kvm [1]: HYP mode not available` and has no `/dev/kvm`,

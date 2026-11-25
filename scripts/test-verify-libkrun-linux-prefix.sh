@@ -3,12 +3,12 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT HUP INT TERM
-mkdir -p "$WORK/lib64" "$WORK/share/rheic-runtime"
+mkdir -p "$WORK/lib64" "$WORK/share/gyrel-runtime"
 printf 'libkrun fixture\n' > "$WORK/lib64/libkrun.so.1.19.6"
 printf 'libkrunfw fixture\n' > "$WORK/lib64/libkrunfw.so.5.6.2"
 printf 'kernel fixture\n' > "$WORK/nerdbox-kernel-arm64"
 sha() { shasum -a 256 "$1" | awk '{print $1}'; }
-cat > "$WORK/share/rheic-runtime/libkrun-linux-arm64-build-info" <<INFO
+cat > "$WORK/share/gyrel-runtime/libkrun-linux-arm64-build-info" <<INFO
 libkrun_version=1.19.6
 libkrun_commit=227b2de6ed323fe180e02f871c5f325a90c13cc2
 libkrunfw_version=5.6.2
@@ -30,6 +30,6 @@ printf 'libkrun fixture\n' > "$WORK/lib64/libkrun.so.1.19.6"
 rm "$WORK/nerdbox-kernel-arm64"
 if verify 2>/dev/null; then echo 'missing kernel accepted' >&2; exit 1; fi
 printf 'kernel fixture\n' > "$WORK/nerdbox-kernel-arm64"
-printf 'libkrun_version=foreign\n' >> "$WORK/share/rheic-runtime/libkrun-linux-arm64-build-info"
+printf 'libkrun_version=foreign\n' >> "$WORK/share/gyrel-runtime/libkrun-linux-arm64-build-info"
 if verify 2>/dev/null; then echo 'foreign metadata accepted' >&2; exit 1; fi
 printf 'PASS: Linux prefix verification and three rejection cases\n'

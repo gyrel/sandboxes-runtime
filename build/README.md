@@ -1,6 +1,6 @@
 # Runtime build pins
 
-<img src="../docs/assets/rheic-shark.png" alt="Rheic shark logo" width="180">
+<img src="../docs/assets/gyrel-shark.png" alt="Gyrel shark logo" width="180">
 
 
 This directory pins the native runtime inputs used by the containerd/nerdbox
@@ -9,8 +9,8 @@ adapter. The manifest is authoritative; the patches are checked by the
 
 ## Native release archives
 
-Starting with v0.0.36, the release includes `rheic-runtime-v0.0.36-linux-arm64.tar.gz`
-and `rheic-runtime-v0.0.36-darwin-arm64.tar.gz`. Each archive contains a
+Starting with v0.0.36, the release includes `gyrel-runtime-v0.0.36-linux-arm64.tar.gz`
+and `gyrel-runtime-v0.0.36-darwin-arm64.tar.gz`. Each archive contains a
 `bundle.json` with the target platform, required roles, exact file inventory,
 sizes, and SHA-256 digests. After checking the published archive checksum,
 extract into a private directory and run:
@@ -52,11 +52,11 @@ Supply the managed paths and digest file through the adapter configuration:
 ```go
 backend, err := ctr.NewBackend(cfg, ctr.BackendOptions{
     Artifacts: map[string]string{
-        "containerd-shim-nerdbox-v1": "/opt/rheic/bin/containerd-shim-nerdbox-v1",
-        "gvproxy":                    "/opt/rheic/bin/gvproxy",
-        "qemu":                       "/opt/rheic/bin/qemu-system-x86_64",
+        "containerd-shim-nerdbox-v1": "/opt/gyrel/bin/containerd-shim-nerdbox-v1",
+        "gvproxy":                    "/opt/gyrel/bin/gvproxy",
+        "qemu":                       "/opt/gyrel/bin/qemu-system-x86_64",
     },
-    DigestsPath: "/opt/rheic/build/digests.yaml",
+    DigestsPath: "/opt/gyrel/build/digests.yaml",
 })
 ```
 
@@ -70,23 +70,23 @@ the repository root with absolute artifact paths:
 
 ```sh
 scripts/update-artifact-digests.sh \
-  containerd-shim-nerdbox-v1=/opt/rheic/bin/containerd-shim-nerdbox-v1 \
-  gvproxy=/opt/rheic/bin/gvproxy \
-  qemu=/opt/rheic/bin/qemu-system-x86_64
+  containerd-shim-nerdbox-v1=/opt/gyrel/bin/containerd-shim-nerdbox-v1 \
+  gvproxy=/opt/gyrel/bin/gvproxy \
+  qemu=/opt/gyrel/bin/qemu-system-x86_64
 ```
 
 The equivalent Make target is:
 
 ```sh
-make artifact-digests ARTIFACTS="containerd-shim-nerdbox-v1=/opt/rheic/bin/containerd-shim-nerdbox-v1 gvproxy=/opt/rheic/bin/gvproxy qemu=/opt/rheic/bin/qemu-system-x86_64"
+make artifact-digests ARTIFACTS="containerd-shim-nerdbox-v1=/opt/gyrel/bin/containerd-shim-nerdbox-v1 gvproxy=/opt/gyrel/bin/gvproxy qemu=/opt/gyrel/bin/qemu-system-x86_64"
 ```
 
 `OUT` and `MANIFEST` select a different output and manifest path, for example
 when staging a release bundle:
 
 ```sh
-OUT=/opt/rheic/build/digests.yaml MANIFEST=/opt/rheic/build/manifest.yaml \
-  scripts/update-artifact-digests.sh containerd-shim-nerdbox-v1=/opt/rheic/bin/containerd-shim-nerdbox-v1
+OUT=/opt/gyrel/build/digests.yaml MANIFEST=/opt/gyrel/build/manifest.yaml \
+  scripts/update-artifact-digests.sh containerd-shim-nerdbox-v1=/opt/gyrel/bin/containerd-shim-nerdbox-v1
 ```
 
 The generator verifies the manifest's component pins, image digest, and patch
@@ -253,7 +253,7 @@ After archiving a capped file, restart its gateway to resume audit recording.
   verify per-file digests at load time; prefix verification is a build-time
   check, not runtime provenance.
 - `patches/qemu-windows-private-pipe-v1.patch` — on Windows, uses the
-  `RHEIC_PIPE_SDDL` supplied by the runtime to create QEMU's virtio-serial
+  `GYREL_PIPE_SDDL` supplied by the runtime to create QEMU's virtio-serial
   named pipe with a protected current-user + SYSTEM DACL and rejects remote
   pipe clients. The host validates the resulting pipe ACL before returning a
   stream. Stock QEMU's Windows pipe backend passes a null security descriptor;
@@ -286,7 +286,7 @@ those pinned inputs with Go 1.27.4 and erofs-utils 1.7.1:
 ```sh
 NERDBOX_SRC=/path/to/clean/nerdbox-v0.2.5 \
 CRUN_BINARY=/path/to/verified/crun-1.30.1-linux-arm64-disable-systemd \
-OUT=/path/to/nerdbox-rootfs-arm64-rheic.erofs \
+OUT=/path/to/nerdbox-rootfs-arm64-gyrel.erofs \
   scripts/build-nerdbox-linux-rootfs.sh
 ```
 
@@ -312,7 +312,7 @@ go build -o gvproxy-policy-v2 ./cmd/gvproxy
 or use `scripts/build-gvproxy.sh` with `GVPROXY_SRC` and `OUT`.
 
 The containerd process must find the patched shim on PATH before the stock
-`containerd-shim-nerdbox-v1`; Rheic does not modify an existing containerd
+`containerd-shim-nerdbox-v1`; Gyrel does not modify an existing containerd
 installation. `scripts/build-nerdbox-shim.sh` builds and signs it.
 
 Both native build scripts verify the source checkout's exact manifest commit
@@ -435,18 +435,18 @@ exist and are validated.
 ## Alpha bundle assembly
 
 Stage the alpha payload in a private, quiescent directory named
-`rheic-sandboxes-alpha-linux-arm64` or `rheic-sandboxes-alpha-darwin-arm64`.
+`gyrel-sandboxes-alpha-linux-arm64` or `gyrel-sandboxes-alpha-darwin-arm64`.
 Include the daemon and launcher in `bin`, build records and patches in `build`,
 the verified native bundle in `runtime`, `README-ALPHA.md`, and an initial
 `SHA256SUMS` listing every payload file. For example:
 
 ```sh
 cd /path/to/staging-parent
-find rheic-sandboxes-alpha-linux-arm64 -type f ! -name SHA256SUMS -print | LC_ALL=C sort | while IFS= read -r file; do
-  (cd rheic-sandboxes-alpha-linux-arm64 && shasum -a 256 "${file#rheic-sandboxes-alpha-linux-arm64/}")
-done > rheic-sandboxes-alpha-linux-arm64/SHA256SUMS
-python3 -I /path/to/repo/scripts/alpha/verify-alpha-package.py rheic-sandboxes-alpha-linux-arm64
-python3 -I /path/to/repo/scripts/alpha/create-alpha-archive.py rheic-sandboxes-alpha-linux-arm64 rheic-sandboxes-alpha-linux-arm64.tar.gz
+find gyrel-sandboxes-alpha-linux-arm64 -type f ! -name SHA256SUMS -print | LC_ALL=C sort | while IFS= read -r file; do
+  (cd gyrel-sandboxes-alpha-linux-arm64 && shasum -a 256 "${file#gyrel-sandboxes-alpha-linux-arm64/}")
+done > gyrel-sandboxes-alpha-linux-arm64/SHA256SUMS
+python3 -I /path/to/repo/scripts/alpha/verify-alpha-package.py gyrel-sandboxes-alpha-linux-arm64
+python3 -I /path/to/repo/scripts/alpha/create-alpha-archive.py gyrel-sandboxes-alpha-linux-arm64 gyrel-sandboxes-alpha-linux-arm64.tar.gz
 ```
 
 The verifier checks the input inventory, runtime bundle and managed build

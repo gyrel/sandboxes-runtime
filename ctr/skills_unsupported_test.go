@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	runtime "github.com/rheic/sandboxes-runtime"
+	runtime "github.com/gyrel/sandboxes-runtime"
 )
 
 func TestSkillsMountRejectsUnsupportedModesBeforeRuntimeActivity(t *testing.T) {
@@ -158,13 +158,13 @@ func TestPinSkillsStoreSnapshotRejectsSymlink(t *testing.T) {
 }
 
 func TestValidSkillsPinPath(t *testing.T) {
-	valid := filepath.Join(os.TempDir(), "rheic-skills-pin-test", "store")
+	valid := filepath.Join(os.TempDir(), "gyrel-skills-pin-test", "store")
 	if !validSkillsPinPath(valid) {
 		t.Fatalf("valid pin path rejected: %s", valid)
 	}
 	for _, path := range []string{
 		"", "relative/store", "/", filepath.Join(os.TempDir(), "other", "store"),
-		filepath.Join(os.TempDir(), "rheic-skills-pin-test", "..", "store"),
+		filepath.Join(os.TempDir(), "gyrel-skills-pin-test", "..", "store"),
 	} {
 		if validSkillsPinPath(path) {
 			t.Fatalf("unsafe pin path accepted: %q", path)
@@ -174,7 +174,7 @@ func TestValidSkillsPinPath(t *testing.T) {
 
 func TestAdoptSkillsPinRejectsMissingMetadata(t *testing.T) {
 	backend := &Backend{}
-	if err := backend.adoptSkillsPin("rheic-dev", map[string]string{}); err == nil {
+	if err := backend.adoptSkillsPin("gyrel-dev", map[string]string{}); err == nil {
 		t.Fatal("empty pin metadata accepted")
 	}
 }
@@ -201,13 +201,13 @@ func TestAdoptSnapshotPinOnNonLinux(t *testing.T) {
 		skillsPinPathLabel:       pin.storeSource,
 	}
 	backend := &Backend{}
-	if err := backend.adoptSkillsPin("rheic-dev", labels); err != nil {
+	if err := backend.adoptSkillsPin("gyrel-dev", labels); err != nil {
 		t.Fatal(err)
 	}
-	if backend.skillsPin("rheic-dev") == nil {
+	if backend.skillsPin("gyrel-dev") == nil {
 		t.Fatal("snapshot pin was not adopted")
 	}
-	if err := backend.forgetSkillsPath("rheic-dev", pin.storeSource); err != nil {
+	if err := backend.forgetSkillsPath("gyrel-dev", pin.storeSource); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(pin.storeSource); !os.IsNotExist(err) {

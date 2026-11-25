@@ -6,7 +6,7 @@ import (
 
 	"testing"
 
-	"github.com/rheic/sandboxes-core/ids"
+	"github.com/gyrel/sandboxes-core/ids"
 )
 
 const validRecord = `{"schema":1,"id":"create-1","token":"0123456789abcdef0123456789abcdef","phase":"run","resources":[{"kind":"fifo","native_id":"id","rel_path":"run/fifo","marked":true}],"started_at_unix":1730000000}`

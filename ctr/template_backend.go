@@ -11,9 +11,9 @@ import (
 
 	containerd "github.com/containerd/containerd/v2/client"
 
-	runtime "github.com/rheic/sandboxes-runtime"
+	runtime "github.com/gyrel/sandboxes-runtime"
 
-	"github.com/rheic/sandboxes-runtime/internal/ocilayer"
+	"github.com/gyrel/sandboxes-runtime/internal/ocilayer"
 )
 
 // captureArgv builds the guest tar argv: caller excludes, the root virtual

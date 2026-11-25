@@ -34,7 +34,7 @@ func indexEntry(t *testing.T, raw []byte) []byte {
 func TestIndexCarriesRefNameAnnotation(t *testing.T) {
 	layer := []byte("diff layer bytes")
 	diff := Descriptor{MediaType: MediaLayer, Digest: digestOf(layer), Size: int64(len(layer))}
-	layout, err := Assemble(Image{DiffLayer: diff, Tag: "rheic-tpl-v10m4:v1"})
+	layout, err := Assemble(Image{DiffLayer: diff, Tag: "gyrel-tpl-v10m4:v1"})
 	if err != nil {
 		t.Fatal(err)
 	}

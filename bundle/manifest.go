@@ -1,4 +1,4 @@
-// Package bundle validates the contents and declared platform of a Rheic
+// Package bundle validates the contents and declared platform of a Gyrel
 // runtime bundle. It does not authenticate bundle.json; callers must verify
 // the enclosing archive's provenance before trusting this manifest.
 package bundle

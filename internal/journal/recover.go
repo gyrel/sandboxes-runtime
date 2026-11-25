@@ -161,7 +161,7 @@ func recoverResource(root *os.Root, rel, token string) (Reason, error) {
 		return reason, err
 	}
 	name := parts[len(parts)-1]
-	marker := name + ".rheic-token"
+	marker := name + ".gyrel-token"
 	resourceInfo, resourceErr := parent.Lstat(name)
 	if resourceErr != nil && !errors.Is(resourceErr, fs.ErrNotExist) {
 		return "", resourceErr

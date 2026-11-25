@@ -1,4 +1,4 @@
-//go:build linux && rheic_linux_workspace
+//go:build linux && gyrel_linux_workspace
 
 package ctr
 
@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	runtime "github.com/rheic/sandboxes-runtime"
+	runtime "github.com/gyrel/sandboxes-runtime"
 )
 
 // These tests exercise the Linux nerdbox/virtiofs workspace path against the
@@ -25,8 +25,8 @@ import (
 // The image must provide /bin/sh, stat, getfacl, setfacl, getfattr and
 // setfattr. On Debian/Ubuntu install the acl and attr packages.
 const (
-	liveWorkspaceXattr      = "user.rheic.workspace.live"
-	liveWorkspaceGuestXattr = "user.rheic.guest"
+	liveWorkspaceXattr      = "user.gyrel.workspace.live"
+	liveWorkspaceGuestXattr = "user.gyrel.guest"
 	liveWorkspaceRW         = "/workspace"
 	liveWorkspaceRO         = "/workspace-ro"
 )
@@ -98,25 +98,25 @@ func TestLinuxWorkspaceReadOnlyLive(t *testing.T) {
 
 func loadLiveWorkspaceConfig(t *testing.T) liveWorkspaceConfig {
 	t.Helper()
-	socket := os.Getenv("RHEIC_TEST_CTR_SOCKET")
-	image := os.Getenv("RHEIC_TEST_IMAGE")
+	socket := os.Getenv("GYREL_TEST_CTR_SOCKET")
+	image := os.Getenv("GYREL_TEST_IMAGE")
 	if socket == "" || image == "" {
-		t.Skip("set RHEIC_TEST_CTR_SOCKET and RHEIC_TEST_IMAGE to run the Linux workspace live tests")
+		t.Skip("set GYREL_TEST_CTR_SOCKET and GYREL_TEST_IMAGE to run the Linux workspace live tests")
 	}
-	platform := os.Getenv("RHEIC_TEST_PLATFORM")
+	platform := os.Getenv("GYREL_TEST_PLATFORM")
 	if platform == "" {
 		platform = "linux/" + goruntime.GOARCH
 	}
-	fifoDir := os.Getenv("RHEIC_TEST_FIFO_DIR")
+	fifoDir := os.Getenv("GYREL_TEST_FIFO_DIR")
 	if fifoDir == "" {
 		fifoDir = t.TempDir()
 	}
 	return liveWorkspaceConfig{
 		socket:      socket,
 		image:       image,
-		ctr:         os.Getenv("RHEIC_TEST_CTR"),
-		runtimeName: os.Getenv("RHEIC_TEST_RUNTIME"),
-		snapshotter: os.Getenv("RHEIC_TEST_SNAPSHOTTER"),
+		ctr:         os.Getenv("GYREL_TEST_CTR"),
+		runtimeName: os.Getenv("GYREL_TEST_RUNTIME"),
+		snapshotter: os.Getenv("GYREL_TEST_SNAPSHOTTER"),
 		platform:    platform,
 		fifoDir:     fifoDir,
 	}

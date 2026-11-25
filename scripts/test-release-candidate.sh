@@ -2,12 +2,12 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/rheic-pretag-check.XXXXXX")
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/gyrel-pretag-check.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 
 git -c init.defaultBranch=main init --bare "$tmp/origin.git" >/dev/null
 git init --initial-branch=main "$tmp/checkout" >/dev/null
-git -C "$tmp/checkout" config user.name 'Rheic Release Test'
+git -C "$tmp/checkout" config user.name 'Gyrel Release Test'
 git -C "$tmp/checkout" config user.email 'release-test@example.invalid'
 mkdir -p "$tmp/checkout/scripts"
 cp "$root/scripts/validate-release-candidate.sh" "$tmp/checkout/scripts/"

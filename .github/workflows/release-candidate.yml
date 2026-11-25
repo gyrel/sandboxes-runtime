@@ -67,7 +67,7 @@ jobs:
   dispatch_release:
     name: Dispatch tag-triggered release workflow
     needs: create_tag
-    if: github.repository == 'rheic/sandboxes-daemon' || github.repository == 'rheic/sandboxes-cli'
+    if: github.repository == 'gyrel/sandboxes-daemon' || github.repository == 'gyrel/sandboxes-cli'
     runs-on: ubuntu-24.04
     permissions:
       actions: write

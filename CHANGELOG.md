@@ -4,6 +4,20 @@
 
 - ADR-0009 create journals use schema 2 with an optional validated `op_id`; schema 1 remains readable.
 
+### Changed
+
+- Rename the brand and contract surfaces from `rheic` to `gyrel`. The Go
+  module path is now `github.com/gyrel/sandboxes-runtime` (previously
+  `github.com/rheic/sandboxes-runtime`). The journal marker suffix is now
+  `.gyrel-token` (previously `.rheic-token`); markers written by earlier
+  builds no longer match and are reported as foreign/leave findings, never
+  deleted. The containerd operation label is now `gyrel.op-id` (previously
+  `rheic.op-id`). The gvproxy egress audit event strings are now
+  `gyrel.egress.decision` and `gyrel.egress.telemetry`. The Linux launcher is
+  now `gyreld-launch.sh`, reads `GYREL_STATE_DIR` (with a deprecated
+  `RHEIC_STATE_DIR` fallback), and the proxy helper binary is
+  `gyrel-proxy-helper-*`.
+
 ## v0.0.64 — 2026-11-24
 
 ### Added

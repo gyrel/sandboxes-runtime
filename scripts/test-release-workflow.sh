@@ -71,7 +71,7 @@ fi
 [[ "$(grep -Fc 'contents: write' "$workflow")" -eq 1 ]] || fail "contents: write must appear only in the tag job"
 
 grep -Fq '    needs: create_tag' <<<"$dispatch_job" || fail "release dispatch must wait for tag creation"
-grep -Fq "if: github.repository == 'rheic/sandboxes-daemon' || github.repository == 'rheic/sandboxes-cli'" <<<"$dispatch_job" || fail "release dispatch must stay limited to release-asset repositories"
+grep -Fq "if: github.repository == 'gyrel/sandboxes-daemon' || github.repository == 'gyrel/sandboxes-cli'" <<<"$dispatch_job" || fail "release dispatch must stay limited to release-asset repositories"
 grep -Fq 'TAG: v${{ inputs.version }}' <<<"$dispatch_job" || fail "release dispatch must use the created tag"
 grep -Fq 'ref=$TAG' <<<"$dispatch_job" || fail "release dispatch must target the created tag"
 ! grep -Fq 'contents: write' <<<"$dispatch_job" || fail "release dispatch must not receive contents: write"

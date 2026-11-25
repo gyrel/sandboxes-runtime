@@ -3,7 +3,7 @@
 set -eu
 : "${1:?usage: verify-libkrun-linux-prefix.sh LIBKRUN_PREFIX}"
 PREFIX=$1
-INFO=$PREFIX/share/rheic-runtime/libkrun-linux-arm64-build-info
+INFO=$PREFIX/share/gyrel-runtime/libkrun-linux-arm64-build-info
 LIBKRUN_COMMIT=227b2de6ed323fe180e02f871c5f325a90c13cc2
 LIBKRUNFW_COMMIT=f14ac64ca8a04c6c9d76cac1c61ee050809c88c9
 KERNEL_SHA256=5484e552a334e15019f4aeba89e5b58f04651cf2f4e24e04de9f152f1c38e3fa

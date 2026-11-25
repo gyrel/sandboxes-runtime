@@ -18,8 +18,8 @@ const taskRunning = "RUNNING"
 const taskStopped = "STOPPED"
 
 const (
-	sandboxLabel    = "io.rheic.sandbox"
-	generationLabel = "io.rheic.sandbox.generation"
+	sandboxLabel    = "io.gyrel.sandbox"
+	generationLabel = "io.gyrel.sandbox.generation"
 )
 
 // Runner executes ctr commands. Tests can replace it with a fake.
