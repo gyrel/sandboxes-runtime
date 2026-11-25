@@ -1,8 +1,8 @@
 diff --git a/cmd/gvproxy/config.go b/cmd/gvproxy/config.go
-index 16cbad47..0a99b9e7 100644
+index 16cbad47049..0a99b9e711d 100644
 --- a/cmd/gvproxy/config.go
 +++ b/cmd/gvproxy/config.go
-@@ -24,31 +24,33 @@ const (
+@@ -24,31 +24,33 @@
  )
  
  type GvproxyArgs struct {
@@ -61,7 +61,7 @@ index 16cbad47..0a99b9e7 100644
  }
  
  type GvproxyConfig struct {
-@@ -62,13 +64,18 @@ type GvproxyConfig struct {
+@@ -62,13 +64,18 @@
  		Stdio  string `yaml:"stdio,omitempty"`
  		Vfkit  string `yaml:"vfkit,omitempty"`
  	} `yaml:"interfaces,omitempty"`
@@ -87,7 +87,7 @@ index 16cbad47..0a99b9e7 100644
  }
  
  type GvproxyConfigForward struct {
-@@ -94,6 +101,7 @@ func GvproxyInit() (*GvproxyConfig, error) {
+@@ -94,6 +101,7 @@
  	if err != nil {
  		return nil, fmt.Errorf("failed to parse command line arguments: %w", err)
  	}
@@ -95,7 +95,7 @@ index 16cbad47..0a99b9e7 100644
  
  	if version.ShowVersion() {
  		fmt.Println(version.String())
-@@ -116,6 +124,24 @@ func GvproxyInit() (*GvproxyConfig, error) {
+@@ -116,6 +124,24 @@
  	return GvproxyConfigure(&config, &args, version.String())
  }
  
@@ -120,7 +120,7 @@ index 16cbad47..0a99b9e7 100644
  func GvproxyArgParse(flagSet *flag.FlagSet, args *GvproxyArgs, argv []string) (*GvproxyArgs, error) {
  	flagSet.StringVar(&args.config, "config", "", "Use configuration file with command line override")
  	flagSet.Var(&args.endpoints, "listen", "control endpoint")
-@@ -142,6 +168,8 @@ func GvproxyArgParse(flagSet *flag.FlagSet, args *GvproxyArgs, argv []string) (*
+@@ -142,6 +168,8 @@
  	flagSet.BoolVar(&args.ec2MetadataAccess, "ec2-metadata-access", false, "Permits access to EC2 Metadata Service and Amazon Time Sync Service")
  	flagSet.StringVar(&args.notificationSocket, "notification", "", "Socket to be used to send network-ready notifications")
  	flagSet.StringVar(&args.apiTokenFile, "api-token-file", "", "Path to file where API token will be read from (needs 0600 permissions on macOS and Linux)")
@@ -129,7 +129,7 @@ index 16cbad47..0a99b9e7 100644
  	if err := flagSet.Parse(argv); err != nil {
  		return nil, err
  	}
-@@ -313,6 +341,16 @@ func GvproxyConfigure(config *GvproxyConfig, args *GvproxyArgs, version string)
+@@ -313,6 +341,16 @@
  	if args.apiTokenFile != "" {
  		config.APITokenFile = args.apiTokenFile
  	}
@@ -147,10 +147,10 @@ index 16cbad47..0a99b9e7 100644
  	// Make sure the qemu socket provided is valid syntax
  	if config.Interfaces.Qemu != "" {
 diff --git a/cmd/gvproxy/main.go b/cmd/gvproxy/main.go
-index 21ab61ee..3b1362c4 100644
+index 21ab61eeafd..3b1362c4bd6 100644
 --- a/cmd/gvproxy/main.go
 +++ b/cmd/gvproxy/main.go
-@@ -5,6 +5,7 @@ import (
+@@ -5,6 +5,7 @@
  	"context"
  	"errors"
  	"fmt"
@@ -158,7 +158,7 @@ index 21ab61ee..3b1362c4 100644
  	"net"
  	"net/http"
  	"net/http/pprof"
-@@ -45,8 +46,25 @@ func main() {
+@@ -45,8 +46,25 @@
  	log.Info(GvproxyVersion())
  
  	ctx, cancel := context.WithCancel(context.Background())
@@ -186,7 +186,7 @@ index 21ab61ee..3b1362c4 100644
  
  	// Create a PID file if requested
  	if config.PIDFile != "" {
-@@ -118,7 +136,7 @@ func InDebugMode() bool {
+@@ -118,7 +136,7 @@
  }
  
  func run(ctx context.Context, g *errgroup.Group, config *GvproxyConfig) error {
@@ -195,7 +195,7 @@ index 21ab61ee..3b1362c4 100644
  	if err != nil {
  		return err
  	}
-@@ -131,6 +149,34 @@ func run(ctx context.Context, g *errgroup.Group, config *GvproxyConfig) error {
+@@ -131,6 +149,34 @@
  		return err
  	})
  
@@ -231,10 +231,10 @@ index 21ab61ee..3b1362c4 100644
  	apiToken, err := tokenauth.ReadToken(config.APITokenFile)
  	if err != nil {
 diff --git a/pkg/services/dns/dns.go b/pkg/services/dns/dns.go
-index aeeb9766..a447a928 100644
+index aeeb97666cf..7db95518bb8 100644
 --- a/pkg/services/dns/dns.go
 +++ b/pkg/services/dns/dns.go
-@@ -28,9 +28,12 @@ type upstreamResolver interface {
+@@ -28,9 +28,12 @@
  var validDNSChars = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
  
  type dnsHandler struct {
@@ -250,11 +250,14 @@ index aeeb9766..a447a928 100644
  	// nameservers are the host's upstream DNS servers ("ip:port") used to
  	// forward raw queries for record types that Go's net.Resolver cannot
  	// look up directly (SOA, PTR, AAAA, CAA, ...).
-@@ -134,15 +137,33 @@ func (h *dnsHandler) addAnswers(m *dns.Msg) {
+@@ -134,15 +137,36 @@
  		if done := h.addLocalAnswers(m, q); done {
  			return
  		}
-+		if h.policy != nil && !h.policy.DNSAllowed(q.Name) {
++		// DNSAnswerAllowed is the fail-closed audit gate: it records the
++		// answer decision synchronously and refuses the answer when the
++		// record of an allowed query cannot be persisted.
++		if h.policy != nil && !h.policy.DNSAnswerAllowed(q.Name) {
 +			m.Rcode = dns.RcodeRefused
 +			return
 +		}
@@ -284,7 +287,7 @@ index aeeb9766..a447a928 100644
  			for _, ip := range ips {
  				if len(ip.IP.To4()) != net.IPv4len {
  					continue
-@@ -309,23 +330,38 @@ type Server struct {
+@@ -309,23 +333,38 @@
  	handler *dnsHandler
  }
  
@@ -331,10 +334,10 @@ index aeeb9766..a447a928 100644
  	mux := dns.NewServeMux()
  	mux.HandleFunc(".", s.handler.handleUDP)
 diff --git a/pkg/services/dns/dns_test.go b/pkg/services/dns/dns_test.go
-index 53b4f1e3..d31271be 100644
+index 53b4f1e363d..d31271bea1b 100644
 --- a/pkg/services/dns/dns_test.go
 +++ b/pkg/services/dns/dns_test.go
-@@ -199,7 +199,10 @@ var _ = ginkgo.Describe("dns add test", func() {
+@@ -199,7 +199,10 @@
  		}))
  	})
  
@@ -346,7 +349,7 @@ index 53b4f1e3..d31271be 100644
  		m := &dns.Msg{
  			MsgHdr: dns.MsgHdr{
  				Authoritative:     false,
-@@ -212,15 +215,16 @@ var _ = ginkgo.Describe("dns add test", func() {
+@@ -212,15 +215,16 @@
  		}
  
  		m.Question[0] = dns.Question{
@@ -366,7 +369,7 @@ index 53b4f1e3..d31271be 100644
  	})
  
  	ginkgo.It("should match existing zones case-insensitively", func() {
-@@ -678,8 +682,8 @@ func TestDNS(t *testing.T) {
+@@ -678,8 +682,8 @@
  
  	upstream := &mockdns.Resolver{
  		Zones: map[string]mockdns.Zone{
@@ -377,7 +380,7 @@ index 53b4f1e3..d31271be 100644
  			},
  		},
  	}
-@@ -701,38 +705,37 @@ func TestDNS(t *testing.T) {
+@@ -701,38 +705,37 @@
  			return d.DialContext(ctx, network, nameserver)
  		},
  	}
@@ -428,7 +431,7 @@ index 53b4f1e3..d31271be 100644
  		return "", nil, err
  	}
  
-@@ -746,7 +749,7 @@ func startDNSServer(upstream upstreamResolver) (string, func(), error) {
+@@ -746,7 +749,7 @@
  			log.Errorf("serve TCP error: %T %s", err, err)
  		}
  	}()
@@ -439,19 +442,106 @@ index 53b4f1e3..d31271be 100644
  	}, nil
 diff --git a/pkg/services/dns/egress_policy_test.go b/pkg/services/dns/egress_policy_test.go
 new file mode 100644
-index 00000000..f720f19b
+index 0000000..9765c251d2d
 --- /dev/null
 +++ b/pkg/services/dns/egress_policy_test.go
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,125 @@
 +package dns
 +
 +import (
++	"errors"
 +	"net"
++	"strings"
++	"sync"
 +	"testing"
 +
 +	"github.com/containers/gvisor-tap-vsock/pkg/types"
 +	"github.com/miekg/dns"
 +)
++
++type recordingDNSWriter struct {
++	mu    sync.Mutex
++	lines []string
++	fail  error
++}
++
++func (w *recordingDNSWriter) Write(p []byte) (int, error) {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	w.lines = append(w.lines, strings.TrimSuffix(string(p), "\n"))
++	if w.fail != nil {
++		return 0, w.fail
++	}
++	return len(p), nil
++}
++
++func (w *recordingDNSWriter) recorded() []string {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	return append([]string(nil), w.lines...)
++}
++
++// The DNS answer gate records both outcomes and refuses the answer when an
++// allowed query's record cannot be persisted (fail-closed audit).
++func TestDNSAnswerGateAuditAndFailClosed(t *testing.T) {
++	allowPolicy := func() *types.EgressPolicy {
++		return &types.EgressPolicy{
++			Revision: "dnsgate",
++			Allow:    []types.EgressRule{{Protocol: "tcp", CIDR: "192.0.2.0/24", Port: 443}},
++		}
++	}
++
++	// Fail-closed: allowed name, failing writer → REFUSED + conversion.
++	failing := &recordingDNSWriter{fail: errors.New("disk full")}
++	holder, err := types.NewEgressPolicyHolderWithAuditWriter(allowPolicy(), true, failing)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer holder.Close()
++	h := &dnsHandler{policy: holder, allowUpstream: true}
++	m := new(dns.Msg)
++	m.SetQuestion("api.example.test.", dns.TypeA)
++	h.addAnswers(m)
++	if m.Rcode != dns.RcodeRefused {
++		t.Fatalf("fail-closed DNS gate rcode = %d, want REFUSED", m.Rcode)
++	}
++	lines := failing.recorded()
++	if len(lines) < 2 || !strings.Contains(lines[0], `"action":"allow"`) || !strings.Contains(lines[1], "audit_write_failed") {
++		t.Fatalf("fail-closed conversion not recorded synchronously: %v", lines)
++	}
++
++	// Healthy writer: allow and deny decisions are recorded.
++	healthy := &recordingDNSWriter{}
++	holder, err = types.NewEgressPolicyHolderWithAuditWriter(&types.EgressPolicy{
++		Revision: "dnsgate",
++		Deny:     []types.EgressRule{{Protocol: "tcp", Domain: "blocked.example.test", Port: 443}},
++		Allow:    []types.EgressRule{{Protocol: "tcp", Domain: "api.example.test", Port: 443}},
++	}, true, healthy)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer holder.Close()
++	h = &dnsHandler{policy: holder, allowUpstream: false}
++	m = new(dns.Msg)
++	m.SetQuestion("api.example.test.", dns.TypeA)
++	h.addAnswers(m)
++	m = new(dns.Msg)
++	m.SetQuestion("blocked.example.test.", dns.TypeA)
++	h.addAnswers(m)
++	if m.Rcode != dns.RcodeRefused {
++		t.Fatalf("denied name rcode = %d, want REFUSED", m.Rcode)
++	}
++	lines = healthy.recorded()
++	if len(lines) != 2 {
++		t.Fatalf("healthy gate lines = %d, want 2: %v", len(lines), lines)
++	}
++	if !strings.Contains(lines[0], `"action":"allow"`) || !strings.Contains(lines[0], `"dns-allowed"`) {
++		t.Fatalf("missing DNS allow record: %s", lines[0])
++	}
++	if !strings.Contains(lines[1], `"action":"deny"`) || !strings.Contains(lines[1], `"dns-name-denied"`) {
++		t.Fatalf("missing DNS deny record: %s", lines[1])
++	}
++}
 +
 +func TestEgressPolicyBlocksExternalDNSFallback(t *testing.T) {
 +	h := &dnsHandler{allowUpstream: false}
@@ -483,7 +573,7 @@ index 00000000..f720f19b
 +}
 diff --git a/pkg/services/dns/policy_dns.go b/pkg/services/dns/policy_dns.go
 new file mode 100644
-index 00000000..b651e7c3
+index 0000000..b651e7c38b7
 --- /dev/null
 +++ b/pkg/services/dns/policy_dns.go
 @@ -0,0 +1,191 @@
@@ -680,7 +770,7 @@ index 00000000..b651e7c3
 +}
 diff --git a/pkg/services/dns/policy_dns_test.go b/pkg/services/dns/policy_dns_test.go
 new file mode 100644
-index 00000000..dda618ad
+index 0000000..dda618ad887
 --- /dev/null
 +++ b/pkg/services/dns/policy_dns_test.go
 @@ -0,0 +1,292 @@
@@ -978,7 +1068,7 @@ index 00000000..dda618ad
 +}
 diff --git a/pkg/services/forwarder/clienthello.go b/pkg/services/forwarder/clienthello.go
 new file mode 100644
-index 00000000..3c6a490e
+index 0000000..3c6a490ed49
 --- /dev/null
 +++ b/pkg/services/forwarder/clienthello.go
 @@ -0,0 +1,75 @@
@@ -1059,7 +1149,7 @@ index 00000000..3c6a490e
 +func (c *replayConn) Read(p []byte) (int, error) { return c.reader.Read(p) }
 diff --git a/pkg/services/forwarder/clienthello_test.go b/pkg/services/forwarder/clienthello_test.go
 new file mode 100644
-index 00000000..ddaf7429
+index 0000000..ddaf742962a
 --- /dev/null
 +++ b/pkg/services/forwarder/clienthello_test.go
 @@ -0,0 +1,105 @@
@@ -1170,7 +1260,7 @@ index 00000000..ddaf7429
 +}
 diff --git a/pkg/services/forwarder/nat_ipv6_test.go b/pkg/services/forwarder/nat_ipv6_test.go
 new file mode 100644
-index 00000000..7e789e57
+index 0000000..7e789e57306
 --- /dev/null
 +++ b/pkg/services/forwarder/nat_ipv6_test.go
 @@ -0,0 +1,220 @@
@@ -1395,10 +1485,10 @@ index 00000000..7e789e57
 +	}
 +}
 diff --git a/pkg/services/forwarder/ports.go b/pkg/services/forwarder/ports.go
-index 1fb8f4f5..54dffb71 100644
+index 1fb8f4f5285..54dffb71c48 100644
 --- a/pkg/services/forwarder/ports.go
 +++ b/pkg/services/forwarder/ports.go
-@@ -22,13 +22,15 @@ import (
+@@ -22,13 +22,15 @@
  	"gvisor.dev/gvisor/pkg/tcpip"
  	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
  	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
@@ -1415,7 +1505,7 @@ index 1fb8f4f5..54dffb71 100644
  
  	proxiesLock sync.Mutex
  	proxies     map[ProxyKey]proxy
-@@ -50,8 +52,11 @@ func (d *gonetDialer) DialContextTCP(ctx context.Context, addr string) (conn net
+@@ -50,8 +52,11 @@
  	if err != nil {
  		return nil, err
  	}
@@ -1429,7 +1519,7 @@ index 1fb8f4f5..54dffb71 100644
  }
  
  type CloseWrapper func() error
-@@ -67,7 +72,66 @@ func NewPortsForwarder(s *stack.Stack) *PortsForwarder {
+@@ -67,7 +72,66 @@
  	}
  }
  
@@ -1496,7 +1586,7 @@ index 1fb8f4f5..54dffb71 100644
  	f.proxiesLock.Lock()
  	defer f.proxiesLock.Unlock()
  
-@@ -143,13 +207,13 @@ func (f *PortsForwarder) Expose(protocol types.TransportProtocol, local, remote
+@@ -143,13 +207,13 @@
  
  		case "tcp": // unix-to-tcp proxy
  			// build address
@@ -1512,7 +1602,7 @@ index 1fb8f4f5..54dffb71 100644
  			}
  
  		default:
-@@ -201,7 +265,7 @@ func (f *PortsForwarder) Expose(protocol types.TransportProtocol, local, remote
+@@ -201,7 +265,7 @@
  			}),
  		}
  	case types.UDP:
@@ -1521,7 +1611,7 @@ index 1fb8f4f5..54dffb71 100644
  		if err != nil {
  			return err
  		}
-@@ -219,7 +283,11 @@ func (f *PortsForwarder) Expose(protocol types.TransportProtocol, local, remote
+@@ -219,7 +283,11 @@
  			if a, ok := from.(*net.UDPAddr); ok {
  				bindAddr = sourceBindAddr(a.IP, a.Port)
  			}
@@ -1534,7 +1624,7 @@ index 1fb8f4f5..54dffb71 100644
  		})
  		if err != nil {
  			return err
-@@ -232,7 +300,7 @@ func (f *PortsForwarder) Expose(protocol types.TransportProtocol, local, remote
+@@ -232,7 +300,7 @@
  			underlying: p,
  		}
  	case types.TCP:
@@ -1543,7 +1633,7 @@ index 1fb8f4f5..54dffb71 100644
  		if err != nil {
  			return err
  		}
-@@ -247,7 +315,11 @@ func (f *PortsForwarder) Expose(protocol types.TransportProtocol, local, remote
+@@ -247,7 +315,11 @@
  						bindAddr = *b
  					}
  				}
@@ -1556,7 +1646,7 @@ index 1fb8f4f5..54dffb71 100644
  			},
  		})
  		if err := p.Start(); err != nil {
-@@ -270,6 +342,65 @@ func (f *PortsForwarder) Expose(protocol types.TransportProtocol, local, remote
+@@ -270,6 +342,65 @@
  	return nil
  }
  
@@ -1622,7 +1712,7 @@ index 1fb8f4f5..54dffb71 100644
  func key(protocol types.TransportProtocol, local string) ProxyKey {
  	return ProxyKey(fmt.Sprintf("%s/%s", protocol, local))
  }
-@@ -355,6 +486,26 @@ func (f *PortsForwarder) Mux() http.Handler {
+@@ -355,6 +486,26 @@
  		}
  		w.WriteHeader(http.StatusOK)
  	})
@@ -1649,7 +1739,7 @@ index 1fb8f4f5..54dffb71 100644
  	mux.HandleFunc("/unexpose", func(w http.ResponseWriter, r *http.Request) {
  		if r.Method != http.MethodPost {
  			http.Error(w, "post only", http.StatusBadRequest)
-@@ -425,24 +576,28 @@ func firstValueOrEmpty(x []string) string {
+@@ -425,24 +576,28 @@
  
  // helper function to build tcpip address
  func tcpipAddress(nicID tcpip.NICID, remote string) (address tcpip.FullAddress, err error) {
@@ -1692,7 +1782,7 @@ index 1fb8f4f5..54dffb71 100644
 +	return address, nil
  }
 diff --git a/pkg/services/forwarder/ports_test.go b/pkg/services/forwarder/ports_test.go
-index 7da8dd1d..93405d77 100644
+index 7da8dd1d758..93405d77bea 100644
 --- a/pkg/services/forwarder/ports_test.go
 +++ b/pkg/services/forwarder/ports_test.go
 @@ -1,9 +1,11 @@
@@ -1707,7 +1797,7 @@ index 7da8dd1d..93405d77 100644
  	"testing"
  	"time"
  
-@@ -15,11 +17,56 @@ import (
+@@ -15,11 +17,56 @@
  	"gvisor.dev/gvisor/pkg/tcpip/header"
  	"gvisor.dev/gvisor/pkg/tcpip/link/loopback"
  	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
@@ -1764,7 +1854,7 @@ index 7da8dd1d..93405d77 100644
  func TestSuite(t *testing.T) {
  	gomega.RegisterFailHandler(ginkgo.Fail)
  	ginkgo.RunSpecs(t, "forwarder suite")
-@@ -106,6 +153,40 @@ var _ = ginkgo.Describe("source IP propagation", func() {
+@@ -106,6 +153,40 @@
  })
  
  var _ = ginkgo.Describe("port forwarding", func() {
@@ -1807,7 +1897,7 @@ index 7da8dd1d..93405d77 100644
  		if ip == nil {
 diff --git a/pkg/services/forwarder/quic/initial.go b/pkg/services/forwarder/quic/initial.go
 new file mode 100644
-index 00000000..1ca368c4
+index 0000000..1ca368c42a0
 --- /dev/null
 +++ b/pkg/services/forwarder/quic/initial.go
 @@ -0,0 +1,525 @@
@@ -2338,7 +2428,7 @@ index 00000000..1ca368c4
 +}
 diff --git a/pkg/services/forwarder/quic/initial_test.go b/pkg/services/forwarder/quic/initial_test.go
 new file mode 100644
-index 00000000..6b8b7c40
+index 0000000..6b8b7c40551
 --- /dev/null
 +++ b/pkg/services/forwarder/quic/initial_test.go
 @@ -0,0 +1,281 @@
@@ -2624,7 +2714,7 @@ index 00000000..6b8b7c40
 +	return byte(value)
 +}
 diff --git a/pkg/services/forwarder/tcp.go b/pkg/services/forwarder/tcp.go
-index 6a1f548a..565f4a73 100644
+index 6a1f548a60a..5b96d72ff3a 100644
 --- a/pkg/services/forwarder/tcp.go
 +++ b/pkg/services/forwarder/tcp.go
 @@ -1,12 +1,15 @@
@@ -2643,7 +2733,7 @@ index 6a1f548a..565f4a73 100644
  	"github.com/inetaf/tcpproxy"
  	log "github.com/sirupsen/logrus"
  	"gvisor.dev/gvisor/pkg/tcpip"
-@@ -23,52 +26,139 @@ const (
+@@ -23,52 +26,159 @@
  	defaultTCPConnectTimeout = 30 * time.Second
  )
  
@@ -2694,7 +2784,7 @@ index 6a1f548a..565f4a73 100644
 +		// widen access to other loopback ports.
 +		if localAddress != destAddress && !policy.HostServicesEnabled() && isLoopbackAddress(localAddress) &&
 +			!policy.HostServicesAllowed("tcp", destAddress.String(), port) {
-+			policy.AuditTCP(destAddress.String(), port, false, "host-services-denied", "")
++			_ = policy.AuditTCP(destAddress.String(), port, false, "host-services-denied", "")
  			r.Complete(true)
  			return
  		}
@@ -2707,16 +2797,28 @@ index 6a1f548a..565f4a73 100644
 +			if routeRule != "" {
 +				reason = "denied-by-rule"
 +			}
-+			policy.AuditTCP(destAddress.String(), port, false, reason, routeRule)
++			_ = policy.AuditTCP(destAddress.String(), port, false, reason, routeRule)
 +			r.Complete(true)
 +			return
 +		}
-+		// For a direct CIDR rule, dial the translated host destination before
-+		// completing the guest handshake. A missing/failed NAT mapping then
-+		// fails closed with a reset instead of an established empty connection.
++		// For a direct CIDR rule, the allow decision is audited BEFORE any
++		// outbound dial or flow tracking begins. If the record cannot be
++		// persisted the connection is refused with a reset (fail-closed), and
++		// AuditDecision has already attempted the deny evidence line.
 +		var outbound net.Conn
 +		var err error
 +		if direct {
++			if auditErr := policy.AuditDecision(types.EgressDecision{
++				Protocol:    "tcp",
++				Destination: destAddress.String(),
++				Port:        port,
++				Action:      "allow",
++				Reason:      "flow-allowed",
++				Rule:        routeRule,
++			}); auditErr != nil {
++				r.Complete(true)
++				return
++			}
 +			outbound, err = net.DialTimeout("tcp", net.JoinHostPort(localAddress.String(), fmt.Sprint(port)), connectTimeout)
 +			if err != nil {
 +				r.Complete(true)
@@ -2734,10 +2836,10 @@ index 6a1f548a..565f4a73 100644
 -				log.Errorf("r.CreateEndpoint() = %v", tcpErr)
 +			if outbound != nil {
 +				_ = outbound.Close()
- 			}
++			}
 +			log.Debugf("r.CreateEndpoint() = %v", tcpErr)
- 			return
- 		}
++			return
++		}
 +		guest := gonet.NewTCPConn(&wq, ep)
 +		defer guest.Close()
 +		var name string
@@ -2745,13 +2847,26 @@ index 6a1f548a..565f4a73 100644
 +		if !direct {
 +			name, prefix, err = readClientHello(guest, connectTimeout)
 +			if err != nil {
-+				policy.AuditTCP(destAddress.String(), port, false, "tls-hello-invalid", "")
++				_ = policy.AuditTCP(destAddress.String(), port, false, "tls-hello-invalid", "")
 +				return
 +			}
 +			if !policy.AllowsDomain(destAddress.String(), port, name) {
-+				policy.AuditTCP(destAddress.String(), port, false, "tls-name-denied", policy.DomainRuleLabel(destAddress.String(), port, name))
++				_ = policy.AuditTCP(destAddress.String(), port, false, "tls-name-denied", policy.DomainRuleLabel(destAddress.String(), port, name))
 +				return
 +			}
++			// The candidate allow is audited before the outbound dial and
++			// before tracking; a failed record closes the guest connection
++			// without ever reaching the network (fail-closed).
++			if auditErr := policy.AuditDecision(types.EgressDecision{
++				Protocol:    "tcp",
++				Destination: destAddress.String(),
++				Port:        port,
++				Action:      "allow",
++				Reason:      "flow-allowed",
++				Rule:        policy.DomainRuleLabel(destAddress.String(), port, name),
++			}); auditErr != nil {
++				return
+ 			}
 +		}
 +		release()
 +		if !direct {
@@ -2768,15 +2883,10 @@ index 6a1f548a..565f4a73 100644
 +			flowID = policy.TrackDomain(destAddress.String(), port, name, outbound)
 +		}
 +		if flowID == 0 && policy.Enabled() {
-+			policy.AuditTCP(destAddress.String(), port, false, "policy-changed", "")
-+			return
-+		}
++			_ = policy.AuditTCP(destAddress.String(), port, false, "policy-changed", "")
+ 			return
+ 		}
 +		if flowID != 0 {
-+			rule := routeRule
-+			if !direct {
-+				rule = policy.DomainRuleLabel(destAddress.String(), port, name)
-+			}
-+			policy.AuditTCP(destAddress.String(), port, true, "flow-allowed", rule)
 +			defer policy.Untrack(flowID)
 +		}
 +		var input net.Conn = guest
@@ -2796,10 +2906,10 @@ index 6a1f548a..565f4a73 100644
  
 diff --git a/pkg/services/forwarder/tcp_policy_test.go b/pkg/services/forwarder/tcp_policy_test.go
 new file mode 100644
-index 00000000..3a6df481
+index 0000000..9d161000ee3
 --- /dev/null
 +++ b/pkg/services/forwarder/tcp_policy_test.go
-@@ -0,0 +1,284 @@
+@@ -0,0 +1,542 @@
 +package forwarder
 +
 +import (
@@ -2809,6 +2919,7 @@ index 00000000..3a6df481
 +	"crypto/rand"
 +	"crypto/tls"
 +	"crypto/x509"
++	"errors"
 +	"io"
 +	"math/big"
 +	"net"
@@ -2831,6 +2942,263 @@ index 00000000..3a6df481
 +	"gvisor.dev/gvisor/pkg/tcpip/stack"
 +	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 +)
++
++var errAuditSinkFull = errors.New("audit sink: no space left on device")
++
++// eventLog is an injectable audit writer that also records ordering events so
++// tests can prove the allow record is written before the outbound dial.
++type eventLog struct {
++	mu     sync.Mutex
++	events []string
++	lines  []string
++	fail   error
++}
++
++func (l *eventLog) add(event string) {
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	l.events = append(l.events, event)
++}
++
++func (l *eventLog) Write(p []byte) (int, error) {
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	l.lines = append(l.lines, strings.TrimSuffix(string(p), "\n"))
++	l.events = append(l.events, "audit")
++	if l.fail != nil {
++		return 0, l.fail
++	}
++	return len(p), nil
++}
++
++func (l *eventLog) snapshot() ([]string, []string) {
++	l.mu.Lock()
++	defer l.mu.Unlock()
++	return append([]string(nil), l.events...), append([]string(nil), l.lines...)
++}
++
++func newTestTCPStack(t *testing.T) *stack.Stack {
++	t.Helper()
++	s := stack.New(stack.Options{NetworkProtocols: []stack.NetworkProtocolFactory{ipv4.NewProtocol}, TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol}})
++	t.Cleanup(s.Close)
++	if e := s.CreateNIC(1, loopback.New()); e != nil {
++		t.Fatal(e)
++	}
++	source := tcpip.AddrFrom4([4]byte{10, 0, 2, 100})
++	if e := s.AddProtocolAddress(1, tcpip.ProtocolAddress{Protocol: ipv4.ProtocolNumber, AddressWithPrefix: source.WithPrefix()}, stack.AddressProperties{}); e != nil {
++		t.Fatal(e)
++	}
++	s.SetSpoofing(1, true)
++	s.SetPromiscuousMode(1, true)
++	s.SetRouteTable([]tcpip.Route{{Destination: header.IPv4EmptySubnet, NIC: 1}})
++	return s
++}
++
++// P2/P1: the TCP allow decision is audited before the outbound dial and
++// before flow tracking. A writer error therefore refuses the connection
++// (guest reset) without ever touching the backend. With a healthy writer the
++// allow record must appear in the event stream before the backend accept.
++func TestTCPPolicyFailClosedAuditBeforeDial(t *testing.T) {
++	backend, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer backend.Close()
++	_, portText, err := net.SplitHostPort(backend.Addr().String())
++	if err != nil {
++		t.Fatal(err)
++	}
++	n, err := strconv.Atoi(portText)
++	if err != nil {
++		t.Fatal(err)
++	}
++	port := uint16(n) //nolint:gosec // net.Listen returns a valid port.
++	policy := &types.EgressPolicy{Revision: "1", Allow: []types.EgressRule{{ID: "rul_direct", Protocol: "tcp", CIDR: "198.51.100.42/32", Port: port}}}
++	virtual := tcpip.AddrFrom4([4]byte{198, 51, 100, 42})
++	nat := map[tcpip.Address]tcpip.Address{virtual: tcpip.AddrFrom4([4]byte{127, 0, 0, 1})}
++
++	// Stage 1: failing writer — refuse the guest connection, never dial out.
++	log := &eventLog{fail: errAuditSinkFull}
++	go func() {
++		for {
++			conn, err := backend.Accept()
++			if err != nil {
++				return
++			}
++			log.add("accept")
++			_ = conn.Close()
++		}
++	}()
++	holder, err := types.NewEgressPolicyHolderWithAuditWriter(policy, true, log)
++	if err != nil {
++		t.Fatal(err)
++	}
++	s := newTestTCPStack(t)
++	var mu sync.Mutex
++	fw := TCP(s, nat, &mu, false, 16, 2*time.Second, holder)
++	s.SetTransportProtocolHandler(tcp.ProtocolNumber, fw.HandlePacket)
++	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
++	defer cancel()
++	if _, err := gonet.DialContextTCP(ctx, s, tcpip.FullAddress{NIC: 1, Addr: virtual, Port: port}, ipv4.ProtocolNumber); err == nil {
++		t.Fatal("a TCP allow whose audit record fails to write must be refused")
++	}
++	events, lines := log.snapshot()
++	for _, event := range events {
++		if event == "accept" {
++			t.Fatal("fail-closed audit must never reach the outbound dial")
++		}
++	}
++	if len(lines) < 2 {
++		t.Fatalf("expected the allow attempt and the flipped deny record, got %v", lines)
++	}
++	if !strings.Contains(lines[0], `"action":"allow"`) || !strings.Contains(lines[1], `"action":"deny"`) || !strings.Contains(lines[1], "audit_write_failed") {
++		t.Fatalf("unexpected fail-closed records: %v", lines)
++	}
++	if err := holder.Close(); err != nil {
++		t.Fatal(err)
++	}
++
++	// Stage 2: healthy writer positive control — the audit line is written
++	// before the backend accept (ordering asserted via the shared event log).
++	backend2, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer backend2.Close()
++	_, portText2, err := net.SplitHostPort(backend2.Addr().String())
++	if err != nil {
++		t.Fatal(err)
++	}
++	n2, err := strconv.Atoi(portText2)
++	if err != nil {
++		t.Fatal(err)
++	}
++	port2 := uint16(n2) //nolint:gosec // net.Listen returns a valid port.
++	policy2 := &types.EgressPolicy{Revision: "1", Allow: []types.EgressRule{{ID: "rul_direct", Protocol: "tcp", CIDR: "198.51.100.42/32", Port: port2}}}
++	healthy := &eventLog{}
++	go func() {
++		for {
++			conn, err := backend2.Accept()
++			if err != nil {
++				return
++			}
++			healthy.add("accept")
++			_ = conn.Close()
++		}
++	}()
++	holder2, err := types.NewEgressPolicyHolderWithAuditWriter(policy2, true, healthy)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer holder2.Close()
++	s2 := newTestTCPStack(t)
++	var mu2 sync.Mutex
++	virtual2 := virtual
++	fw2 := TCP(s2, map[tcpip.Address]tcpip.Address{virtual2: tcpip.AddrFrom4([4]byte{127, 0, 0, 1})}, &mu2, false, 16, 2*time.Second, holder2)
++	s2.SetTransportProtocolHandler(tcp.ProtocolNumber, fw2.HandlePacket)
++	ctx2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
++	defer cancel2()
++	conn, err := gonet.DialContextTCP(ctx2, s2, tcpip.FullAddress{NIC: 1, Addr: virtual2, Port: port2}, ipv4.ProtocolNumber)
++	if err != nil {
++		t.Fatalf("healthy audit writer must not block the allow: %v", err)
++	}
++	_ = conn.Close()
++	for i := 0; i < 100; i++ {
++		if events, _ := healthy.snapshot(); len(events) >= 2 {
++			break
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++	events, lines = healthy.snapshot()
++	if len(events) < 2 || events[0] != "audit" || events[len(events)-1] != "accept" {
++		t.Fatalf("audit write must precede the outbound dial/accept: %v", events)
++	}
++	if !strings.Contains(lines[0], `"action":"allow"`) || !strings.Contains(lines[0], "flow-allowed") {
++		t.Fatalf("missing allow audit line before tracking: %v", lines)
++	}
++}
++
++// P2 for the TLS candidate path: the allow decision is recorded (and fails
++// closed) before dialing the host destination, so a writer error never
++// reaches the backend.
++func TestTCPPolicyFailClosedAuditBeforeDialTLS(t *testing.T) {
++	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
++	if err != nil {
++		t.Fatal(err)
++	}
++	certTemplate := &x509.Certificate{SerialNumber: big.NewInt(1), DNSNames: []string{"api.example.test"}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, BasicConstraintsValid: true}
++	der, err := x509.CreateCertificate(rand.Reader, certTemplate, certTemplate, &key.PublicKey, key)
++	if err != nil {
++		t.Fatal(err)
++	}
++	backend, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer backend.Close()
++	tlsBackend := tls.NewListener(backend, &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS12})
++	defer tlsBackend.Close()
++	var acceptMu sync.Mutex
++	accepted := 0
++	go func() {
++		for {
++			conn, err := tlsBackend.Accept()
++			if err != nil {
++				return
++			}
++			acceptMu.Lock()
++			accepted++
++			acceptMu.Unlock()
++			_ = conn.Close()
++		}
++	}()
++	_, portText, err := net.SplitHostPort(backend.Addr().String())
++	if err != nil {
++		t.Fatal(err)
++	}
++	n, err := strconv.Atoi(portText)
++	if err != nil {
++		t.Fatal(err)
++	}
++	port := uint16(n) //nolint:gosec // net.Listen returns a valid port.
++
++	log := &eventLog{fail: errAuditSinkFull}
++	policy := &types.EgressPolicy{Revision: "1", Allow: []types.EgressRule{{ID: "rul_tls", Protocol: "tcp", Domain: "api.example.test", Port: port}}}
++	holder, err := types.NewEgressPolicyHolderWithAuditWriter(policy, true, log)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer holder.Close()
++	holder.RecordDNS("api.example.test", []net.IPAddr{{IP: net.ParseIP("198.51.100.42")}})
++
++	s := newTestTCPStack(t)
++	var mu sync.Mutex
++	virtual := tcpip.AddrFrom4([4]byte{198, 51, 100, 42})
++	fw := TCP(s, map[tcpip.Address]tcpip.Address{virtual: tcpip.AddrFrom4([4]byte{127, 0, 0, 1})}, &mu, false, 16, 2*time.Second, holder)
++	s.SetTransportProtocolHandler(tcp.ProtocolNumber, fw.HandlePacket)
++	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
++	defer cancel()
++	guest, err := gonet.DialContextTCP(ctx, s, tcpip.FullAddress{NIC: 1, Addr: virtual, Port: port}, ipv4.ProtocolNumber)
++	if err != nil {
++		t.Fatalf("candidate guest connection should complete before SNI authorization: %v", err)
++	}
++	defer guest.Close()
++	_ = guest.SetDeadline(time.Now().Add(3 * time.Second))
++	secure := tls.Client(guest, &tls.Config{ServerName: "api.example.test", InsecureSkipVerify: true, MinVersion: tls.VersionTLS12})
++	if err := secure.Handshake(); err == nil {
++		t.Fatal("a TLS allow whose audit record fails to write must never reach the backend")
++	}
++	acceptMu.Lock()
++	gotAccepts := accepted
++	acceptMu.Unlock()
++	if gotAccepts != 0 {
++		t.Fatalf("fail-closed audit must refuse before dialing, backend accepted %d", gotAccepts)
++	}
++	_, lines := log.snapshot()
++	if len(lines) < 2 || !strings.Contains(lines[0], `"action":"allow"`) || !strings.Contains(lines[1], "audit_write_failed") {
++		t.Fatalf("unexpected fail-closed records: %v", lines)
++	}
++}
 +
 +func TestTCPPolicyForwarding(t *testing.T) {
 +	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -3085,7 +3453,7 @@ index 00000000..3a6df481
 +	}
 +}
 diff --git a/pkg/services/forwarder/udp.go b/pkg/services/forwarder/udp.go
-index 12694496..6bf1eef0 100644
+index 126944960a5..6bf1eef0e49 100644
 --- a/pkg/services/forwarder/udp.go
 +++ b/pkg/services/forwarder/udp.go
 @@ -1,10 +1,14 @@
@@ -3103,7 +3471,7 @@ index 12694496..6bf1eef0 100644
  	log "github.com/sirupsen/logrus"
  	"gvisor.dev/gvisor/pkg/tcpip"
  	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
-@@ -14,7 +18,19 @@ import (
+@@ -14,7 +18,19 @@
  	"gvisor.dev/gvisor/pkg/waiter"
  )
  
@@ -3124,7 +3492,7 @@ index 12694496..6bf1eef0 100644
  	return udp.NewForwarder(s, func(r *udp.ForwarderRequest) bool {
  		localAddress := r.ID().LocalAddress
  
-@@ -22,11 +38,24 @@ func UDP(s *stack.Stack, nat map[tcpip.Address]tcpip.Address, natLock *sync.Mute
+@@ -22,11 +38,24 @@
  			return true
  		}
  
@@ -3149,7 +3517,7 @@ index 12694496..6bf1eef0 100644
  
  		var wq waiter.Queue
  		ep, tcpErr := r.CreateEndpoint(&wq)
-@@ -43,7 +72,66 @@ func UDP(s *stack.Stack, nat map[tcpip.Address]tcpip.Address, natLock *sync.Mute
+@@ -43,7 +72,66 @@
  		p, _ := NewUDPProxy(&autoStoppingListener{underlying: gonet.NewUDPConn(&wq, ep)}, func(_ net.Addr) (net.Conn, error) {
  			return net.Dial("udp", net.JoinHostPort(localAddress.String(), strconv.Itoa(int(r.ID().LocalPort))))
  		})
@@ -3217,10 +3585,10 @@ index 12694496..6bf1eef0 100644
  
  			// note that at this point packets that are sent to the current forwarder session
 diff --git a/pkg/services/forwarder/udp_proxy.go b/pkg/services/forwarder/udp_proxy.go
-index 6689fecc..ffe592c1 100644
+index 6689fecc034..ffe592c139e 100644
 --- a/pkg/services/forwarder/udp_proxy.go
 +++ b/pkg/services/forwarder/udp_proxy.go
-@@ -51,26 +51,42 @@ type connTrackMap map[connTrackKey]net.Conn
+@@ -51,26 +51,42 @@
  // interface to handle UDP traffic forwarding between the frontend and backend
  // addresses.
  type UDPProxy struct {
@@ -3270,7 +3638,7 @@ index 6689fecc..ffe592c1 100644
  		proxyConn.Close()
  	}()
  
-@@ -122,17 +138,49 @@ func (proxy *UDPProxy) Run() {
+@@ -122,17 +138,49 @@
  		fromKey := newConnTrackKey(from.(*net.UDPAddr))
  		proxy.connTrackLock.Lock()
  		proxyConn, hit := proxy.connTrackTable[*fromKey]
@@ -3321,7 +3689,7 @@ index 6689fecc..ffe592c1 100644
  		for i := 0; i != read; {
  			_ = proxyConn.SetReadDeadline(time.Now().Add(UDPConnTrackTimeout))
  			written, err := proxyConn.Write(readBuf[i:read])
-@@ -147,12 +195,26 @@ func (proxy *UDPProxy) Run() {
+@@ -147,12 +195,26 @@
  
  // Close stops forwarding the traffic.
  func (proxy *UDPProxy) Close() error {
@@ -3352,7 +3720,7 @@ index 6689fecc..ffe592c1 100644
  
 diff --git a/pkg/services/forwarder/udp_proxy_policy_test.go b/pkg/services/forwarder/udp_proxy_policy_test.go
 new file mode 100644
-index 00000000..654b483a
+index 0000000..654b483a8ff
 --- /dev/null
 +++ b/pkg/services/forwarder/udp_proxy_policy_test.go
 @@ -0,0 +1,166 @@
@@ -3523,10 +3891,10 @@ index 00000000..654b483a
 +
 +var _ io.Closer = (*UDPProxy)(nil)
 diff --git a/pkg/tap/switch.go b/pkg/tap/switch.go
-index 96eee3c6..c10e8d82 100644
+index 96eee3c6e58..c10e8d82657 100644
 --- a/pkg/tap/switch.go
 +++ b/pkg/tap/switch.go
-@@ -131,7 +131,7 @@ func (e *Switch) txPkt(pkt *stack.PacketBuffer) error {
+@@ -131,7 +131,7 @@
  	if size < 0 {
  		return fmt.Errorf("packet size out of range")
  	}
@@ -3535,7 +3903,7 @@ index 96eee3c6..c10e8d82 100644
  		e.camLock.RLock()
  		srcID, ok := e.cam[src]
  		if !ok {
-@@ -182,6 +182,10 @@ func (e *Switch) txPkt(pkt *stack.PacketBuffer) error {
+@@ -182,6 +182,10 @@
  	return nil
  }
  
@@ -3546,7 +3914,7 @@ index 96eee3c6..c10e8d82 100644
  func (e *Switch) txBuf(conn protocolConn, buf []byte) error {
  	e.writeLock.Lock()
  	defer e.writeLock.Unlock()
-@@ -319,7 +323,7 @@ func (e *Switch) rxBuf(_ context.Context, id int, buf []byte) {
+@@ -319,7 +323,7 @@
  		}
  		pkt.DecRef()
  	}
@@ -3557,7 +3925,7 @@ index 96eee3c6..c10e8d82 100644
  		pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
 diff --git a/pkg/tap/switch_ipv6_test.go b/pkg/tap/switch_ipv6_test.go
 new file mode 100644
-index 00000000..093bdc1c
+index 0000000..093bdc1c2fe
 --- /dev/null
 +++ b/pkg/tap/switch_ipv6_test.go
 @@ -0,0 +1,80 @@
@@ -3642,10 +4010,10 @@ index 00000000..093bdc1c
 +	}
 +}
 diff --git a/pkg/types/configuration.go b/pkg/types/configuration.go
-index 613b32a1..d4f309b0 100644
+index 613b32a146d..d4f309b0b0e 100644
 --- a/pkg/types/configuration.go
 +++ b/pkg/types/configuration.go
-@@ -34,6 +34,11 @@ type Configuration struct {
+@@ -34,6 +34,11 @@
  	// Built-in DNS records that will be served by the DNS server embedded in the gateway
  	DNS []Zone `yaml:"dns,omitempty"`
  
@@ -3657,7 +4025,7 @@ index 613b32a1..d4f309b0 100644
  	// List of search domains that will be added in all DHCP replies
  	DNSSearchDomains []string `yaml:"dnsSearchDomains,omitempty"`
  
-@@ -65,6 +70,20 @@ type Configuration struct {
+@@ -65,6 +70,20 @@
  
  	// Timeout in seconds for outbound TCP connection attempts (default: 30)
  	TCPConnectTimeout int `yaml:"tcpConnectTimeout,omitempty"`
@@ -3680,10 +4048,10 @@ index 613b32a1..d4f309b0 100644
  type Protocol string
 diff --git a/pkg/types/egress_policy.go b/pkg/types/egress_policy.go
 new file mode 100644
-index 00000000..54560348
+index 0000000..d09b3252e90
 --- /dev/null
 +++ b/pkg/types/egress_policy.go
-@@ -0,0 +1,1317 @@
+@@ -0,0 +1,1755 @@
 +package types
 +
 +import (
@@ -3725,20 +4093,61 @@ index 00000000..54560348
 +	// AuditLog is the path of an append-only JSONL decision log. An empty path
 +	// disables the file log, but decisions are still enforced.
 +	AuditLog string `yaml:"auditLog,omitempty" json:"auditLog,omitempty"`
++	// Correlation metadata is optional and copied verbatim onto decision
++	// records (schema v2: op_id, req_id, sandbox_id, policy_generation). Each
++	// value must match correlationIDPattern or it is treated as absent. These
++	// fields are evidence only: they never authorize anything.
++	OpID             string `yaml:"opID,omitempty" json:"opID,omitempty"`
++	RequestID        string `yaml:"reqID,omitempty" json:"reqID,omitempty"`
++	PolicyGeneration string `yaml:"policyGeneration,omitempty" json:"policyGeneration,omitempty"`
 +}
 +
-+// EgressDecision is one policy outcome. It intentionally contains no headers,
-+// payloads, credentials, or hostnames that were not already in the policy.
++// EgressDecision is one policy outcome in schema v2 JSONL. It intentionally
++// contains no headers, payloads, credentials, or hostnames that were not
++// already in the policy or the DNS query name. Schema v2 fields:
++//
++//	schema_version int     always egressAuditSchemaVersion (2)
++//	event          string   "rheic.egress.decision" (or "…telemetry" markers)
++//	component      string   always "gateway"
++//	outcome        string   "ok" for allow, "denied" for deny
++//	action         string   "allow" or "deny"
++//	reason         string   lower snake/hyphen enum; "audit_write_failed" when
++//	                       a fail-closed conversion happened
++//	policy_generation, op_id, req_id, sandbox_id
++//	                       optional correlation, validated at provisioning
++//	count          int      only on coalesced deny lines (merged repeats)
 +type EgressDecision struct {
-+	Time        string `json:"time"`
-+	SandboxID   string `json:"sandboxId,omitempty"`
-+	Revision    string `json:"revision"`
-+	Protocol    string `json:"protocol"`
-+	Destination string `json:"destination"`
-+	Port        uint16 `json:"port"`
-+	Action      string `json:"action"`
-+	Reason      string `json:"reason,omitempty"`
-+	Rule        string `json:"rule,omitempty"`
++	SchemaVersion    int    `json:"schema_version"`
++	Event            string `json:"event,omitempty"`
++	Component        string `json:"component,omitempty"`
++	Time             string `json:"time"`
++	Outcome          string `json:"outcome,omitempty"`
++	SandboxID        string `json:"sandboxId,omitempty"`
++	Revision         string `json:"revision"`
++	PolicyGeneration string `json:"policy_generation,omitempty"`
++	Protocol         string `json:"protocol"`
++	Destination      string `json:"destination"`
++	Port             uint16 `json:"port"`
++	Action           string `json:"action"`
++	Reason           string `json:"reason,omitempty"`
++	Rule             string `json:"rule,omitempty"`
++	OpID             string `json:"op_id,omitempty"`
++	ReqID            string `json:"req_id,omitempty"`
++	SandboxCorrID    string `json:"sandbox_id,omitempty"`
++	Count            int    `json:"count,omitempty"`
++}
++
++// correlationIDPattern bounds correlation identifiers so hostile provisioning
++// input cannot inject arbitrary strings into the audit trail.
++var correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
++
++// sanitizeCorrelationID returns value when it matches the correlation pattern,
++// and the empty string ("absent") otherwise.
++func sanitizeCorrelationID(value string) string {
++	if correlationIDPattern.MatchString(value) {
++		return value
++	}
++	return ""
 +}
 +
 +type compiledEgressRule struct {
@@ -3791,11 +4200,14 @@ index 00000000..54560348
 +}
 +
 +type egressSnapshot struct {
-+	revision  string
-+	sandboxID string
-+	allow     []compiledEgressRule
-+	deny      []compiledEgressRule
-+	allowAny  bool
++	revision         string
++	sandboxID        string
++	opID             string
++	reqID            string
++	policyGeneration string
++	allow            []compiledEgressRule
++	deny             []compiledEgressRule
++	allowAny         bool
 +}
 +
 +type resolvedBinding struct {
@@ -4020,11 +4432,16 @@ index 00000000..54560348
 +		revision = "0"
 +	}
 +	return &egressSnapshot{
-+		revision:  revision,
-+		sandboxID: policy.SandboxID,
-+		allow:     allow,
-+		deny:      deny,
-+		allowAny:  policy.AllowAny,
++		revision: revision,
++		// Correlation metadata is evidence only: invalid values are treated
++		// as absent and nothing in decide() consults any of these fields.
++		sandboxID:        sanitizeCorrelationID(policy.SandboxID),
++		opID:             sanitizeCorrelationID(policy.OpID),
++		reqID:            sanitizeCorrelationID(policy.RequestID),
++		policyGeneration: sanitizeCorrelationID(policy.PolicyGeneration),
++		allow:            allow,
++		deny:             deny,
++		allowAny:         policy.AllowAny,
 +	}, nil
 +}
 +
@@ -4037,25 +4454,60 @@ index 00000000..54560348
 +	return err
 +}
 +
-+// Audit records are best effort under load. Network decisions never wait for
-+// storage, and the file and in-memory queue both have fixed upper bounds.
++// Audit records are the evidence contract for policy enforcement. DECISION
++// records (allow/deny of a connection or a DNS answer) are written and flushed
++// synchronously at the decision site: if the record cannot be persisted, the
++// network decision is converted to a deny with reason "audit_write_failed".
++// Bounded, best-effort buffering remains only for NON-decision telemetry (flow
++// revocation records), which must never block the data plane. Repeated deny
++// decisions for the same destination coalesce within a bounded window so a
++// hostile guest cannot grow the log; the first deny of every window is always
++// written and allow lines are never coalesced.
 +const (
-+	egressAuditQueueSize           = 256
-+	egressAuditMaxBytes      int64 = 16 << 20
-+	egressAuditMarkerReserve int64 = 256
++	egressAuditSchemaVersion        = 2
++	egressAuditEventDecision        = "rheic.egress.decision"
++	egressAuditEventTelemetry       = "rheic.egress.telemetry"
++	egressAuditComponent            = "gateway"
++	egressAuditQueueSize            = 256
++	egressAuditMaxBytes       int64 = 16 << 20
++	egressAuditMarkerReserve  int64 = 256
++	egressDenyCoalesceWindow        = time.Second
++	egressCoalesceMaxKeys           = 1024
 +)
 +
++// ReasonAuditWriteFailed is the fail-closed conversion reason.
++const reasonAuditWriteFailed = "audit_write_failed"
++
++type egressCoalesceKey struct {
++	destination string
++	port        uint16
++	protocol    string
++	action      string
++	reason      string
++}
++
++type egressCoalesceState struct {
++	windowStart time.Time
++	pending     int
++	last        EgressDecision
++}
++
 +type egressAudit struct {
-+	mu      sync.Mutex
-+	file    *os.File
-+	queue   chan EgressDecision
-+	done    chan struct{}
-+	closed  bool
-+	dropped uint64
-+	err     error
-+	size    int64
-+	full    bool
-+	dirty   bool
++	mu       sync.Mutex
++	file     *os.File
++	writer   io.Writer // injected sink; defaults to file (tests use this)
++	injected bool      // writer is caller-supplied, not an AuditLog path
++	now      func() time.Time
++	queue    chan EgressDecision
++	done     chan struct{}
++	closed   bool
++	fileDone bool
++	dropped  uint64
++	err      error
++	size     int64
++	full     bool
++	dirty    bool
++	coalesce map[egressCoalesceKey]*egressCoalesceState
 +}
 +
 +func openEgressAudit(path string) (*egressAudit, error) {
@@ -4071,11 +4523,176 @@ index 00000000..54560348
 +		_ = file.Close()
 +		return nil, fmt.Errorf("cannot stat egress audit log %q: %w", path, err)
 +	}
-+	a := &egressAudit{file: file, queue: make(chan EgressDecision, egressAuditQueueSize), done: make(chan struct{}), size: info.Size()}
++	a := newEgressAuditSink()
++	a.file = file
++	a.size = info.Size()
 +	go a.run()
 +	return a, nil
 +}
 +
++// newEgressAuditSink builds the shared sink state. The queue worker is kept
++// for non-decision telemetry only; decision records write inline.
++func newEgressAuditSink() *egressAudit {
++	return &egressAudit{
++		queue:    make(chan EgressDecision, egressAuditQueueSize),
++		done:     make(chan struct{}),
++		now:      time.Now,
++		coalesce: make(map[egressCoalesceKey]*egressCoalesceState),
++	}
++}
++
++func (a *egressAudit) sink() io.Writer {
++	if a.writer != nil {
++		return a.writer
++	}
++	return a.file
++}
++
++func (a *egressAudit) finalize(record *EgressDecision, now time.Time) {
++	record.SchemaVersion = egressAuditSchemaVersion
++	if record.Event == "" {
++		record.Event = egressAuditEventDecision
++	}
++	record.Component = egressAuditComponent
++	if record.Time == "" {
++		record.Time = now.UTC().Format(time.RFC3339Nano)
++	}
++	if record.Outcome == "" {
++		switch record.Action {
++		case "allow":
++			record.Outcome = "ok"
++		case "deny":
++			record.Outcome = "denied"
++		}
++	}
++}
++
++// recordDecision writes one DECISION record synchronously (write+flush) and
++// returns any storage error. The caller must convert an allow to a deny when
++// this returns an error. Deny records coalesce per destination window; the
++// first deny of every window is written immediately so evidence is never
++// dropped. A nil sink means no audit trail is configured: that is not a write
++// failure.
++func (a *egressAudit) recordDecision(record EgressDecision) error {
++	if a == nil {
++		return nil
++	}
++	a.mu.Lock()
++	defer a.mu.Unlock()
++	if a.closed {
++		return fmt.Errorf("egress audit closed")
++	}
++	now := a.now()
++	a.finalize(&record, now)
++	if a.coalesce == nil {
++		a.coalesce = make(map[egressCoalesceKey]*egressCoalesceState)
++	}
++	if record.Action != "deny" || record.Event != egressAuditEventDecision {
++		return a.appendDecisionLocked(record)
++	}
++	key := egressCoalesceKey{destination: record.Destination, port: record.Port, protocol: record.Protocol, action: record.Action, reason: record.Reason}
++	state, tracked := a.coalesce[key]
++	if tracked && now.Sub(state.windowStart) < egressDenyCoalesceWindow {
++		state.pending++
++		state.last = record
++		return nil
++	}
++	var flushed error
++	if tracked {
++		if state.pending > 0 {
++			merged := state.last
++			merged.Count = state.pending
++			flushed = a.appendDecisionLocked(merged)
++		}
++		state.windowStart = now
++		state.pending = 0
++		state.last = record
++	} else {
++		if len(a.coalesce) >= egressCoalesceMaxKeys {
++			a.evictOldestLocked()
++		}
++		a.coalesce[key] = &egressCoalesceState{windowStart: now, last: record}
++	}
++	if err := a.appendDecisionLocked(record); err != nil {
++		return err
++	}
++	return flushed
++}
++
++// evictOldestLocked drops the coalescing state with the oldest window. It is
++// called only when the bounded map is full. Pending merged lines are flushed
++// first so eviction can never lose a deny record; the dropped key simply stops
++// coalescing, and its next deny writes the first line of a fresh window.
++func (a *egressAudit) evictOldestLocked() {
++	var oldestKey egressCoalesceKey
++	var oldest *egressCoalesceState
++	first := true
++	for key, state := range a.coalesce {
++		if first || state.windowStart.Before(oldest.windowStart) {
++			oldestKey, oldest, first = key, state, false
++		}
++	}
++	if oldest == nil {
++		return
++	}
++	if oldest.pending > 0 {
++		merged := oldest.last
++		merged.Count = oldest.pending
++		_ = a.appendDecisionLocked(merged)
++	}
++	delete(a.coalesce, oldestKey)
++}
++
++// appendDecisionLocked writes and flushes one decision line. Unlike the
++// telemetry worker it does not latch storage errors permanently: transient
++// failures fail exactly the decisions they hit. The size cap is terminal; once
++// marked full, every later decision write fails (and the decision fails
++// closed).
++func (a *egressAudit) appendDecisionLocked(record EgressDecision) error {
++	line, err := json.Marshal(record)
++	if err != nil {
++		return fmt.Errorf("encode audit record: %w", err)
++	}
++	line = append(line, '\n')
++	if a.full {
++		return fmt.Errorf("egress audit log reached size limit")
++	}
++	if a.size+int64(len(line)) > egressAuditMaxBytes-egressAuditMarkerReserve {
++		a.full = true
++		markerRecord := EgressDecision{Event: egressAuditEventTelemetry, Time: time.Now().UTC().Format(time.RFC3339Nano), Action: "audit-incomplete", Reason: "size-limit"}
++		a.finalize(&markerRecord, time.Now())
++		marker, _ := json.Marshal(markerRecord)
++		marker = append(marker, '\n')
++		if a.size+int64(len(marker)) <= egressAuditMaxBytes {
++			if _, werr := a.sink().Write(marker); werr == nil {
++				a.size += int64(len(marker))
++			}
++		} else {
++			fmt.Fprintln(os.Stderr, "egress audit: existing log already exceeds size limit")
++		}
++		return fmt.Errorf("egress audit log reached size limit")
++	}
++	n, err := a.sink().Write(line)
++	a.size += int64(n)
++	if err == nil && n != len(line) {
++		err = io.ErrShortWrite
++	}
++	if err != nil {
++		fmt.Fprintf(os.Stderr, "egress audit write failed: %v\n", err)
++		return err
++	}
++	if syncer, ok := a.sink().(interface{ Sync() error }); ok {
++		if err := syncer.Sync(); err != nil {
++			fmt.Fprintf(os.Stderr, "egress audit sync failed: %v\n", err)
++			return err
++		}
++	}
++	return nil
++}
++
++// record queues a NON-decision telemetry record (flow revocations). It stays
++// best-effort under a fixed bound so revocation evidence can never block the
++// data plane; dropped records are reported with an audit-incomplete marker.
 +func (a *egressAudit) record(decision EgressDecision) error {
 +	if a == nil {
 +		return nil
@@ -4094,9 +4711,16 @@ index 00000000..54560348
 +	return nil
 +}
 +
-+// write is called only by the worker. Reserve space for a final truncation
-+// marker so readers can distinguish a capped log from a complete one.
++// write is called only by the worker, holding no lock except its own
++// append. Reserve space for a final truncation marker so readers can
++// distinguish a capped log from a complete one.
 +func (a *egressAudit) write(value any) {
++	a.mu.Lock()
++	defer a.mu.Unlock()
++	if record, ok := value.(EgressDecision); ok {
++		a.finalize(&record, time.Now())
++		value = record
++	}
 +	if a.err != nil || a.full {
 +		return
 +	}
@@ -4108,16 +4732,16 @@ index 00000000..54560348
 +	line = append(line, '\n')
 +	if a.size+int64(len(line)) > egressAuditMaxBytes-egressAuditMarkerReserve {
 +		a.full = true
-+		line, _ = json.Marshal(EgressDecision{Time: time.Now().UTC().Format(time.RFC3339Nano), Action: "audit-incomplete", Reason: "size-limit"})
++		line, _ = json.Marshal(EgressDecision{Event: egressAuditEventTelemetry, Time: time.Now().UTC().Format(time.RFC3339Nano), Action: "audit-incomplete", Reason: "size-limit"})
 +		line = append(line, '\n')
 +		if a.size+int64(len(line)) > egressAuditMaxBytes {
 +			fmt.Fprintln(os.Stderr, "egress audit: existing log already exceeds size limit")
 +			return
 +		}
 +	}
-+	n, err := a.file.Write(line)
++	n, err := a.sink().Write(line)
 +	a.size += int64(n)
-+	if n > 0 {
++	if n > 0 && a.file != nil {
 +		a.dirty = true
 +	}
 +	if err == nil && n != len(line) {
@@ -4135,7 +4759,7 @@ index 00000000..54560348
 +	a.dropped = 0
 +	a.mu.Unlock()
 +	if dropped != 0 {
-+		a.write(EgressDecision{Time: time.Now().UTC().Format(time.RFC3339Nano), Action: "audit-incomplete", Reason: fmt.Sprintf("queue-full: dropped %d", dropped)})
++		a.write(EgressDecision{Event: egressAuditEventTelemetry, Time: time.Now().UTC().Format(time.RFC3339Nano), Action: "audit-incomplete", Reason: fmt.Sprintf("queue-full: dropped %d", dropped)})
 +	}
 +}
 +
@@ -4148,25 +4772,34 @@ index 00000000..54560348
 +		case decision, ok := <-a.queue:
 +			if !ok {
 +				a.reportDropped()
-+				if err := a.file.Sync(); a.err == nil {
-+					a.err = err
-+				}
-+				if err := a.file.Close(); a.err == nil {
-+					a.err = err
-+				}
 +				return
 +			}
 +			a.write(decision)
 +		case <-ticker.C:
 +			a.reportDropped()
-+			if a.dirty && a.err == nil {
++			a.mu.Lock()
++			if a.dirty && a.err == nil && a.file != nil {
 +				if err := a.file.Sync(); err != nil {
 +					a.err = err
 +					fmt.Fprintf(os.Stderr, "egress audit sync failed: %v\n", err)
 +				}
 +				a.dirty = false
 +			}
++			a.mu.Unlock()
 +		}
++	}
++}
++
++// flushCoalescedLocked writes every pending merged deny line so closing never
++// loses counted evidence.
++func (a *egressAudit) flushCoalescedLocked() {
++	for key, state := range a.coalesce {
++		if state.pending > 0 {
++			merged := state.last
++			merged.Count = state.pending
++			_ = a.appendDecisionLocked(merged)
++		}
++		delete(a.coalesce, key)
 +	}
 +}
 +
@@ -4181,7 +4814,20 @@ index 00000000..54560348
 +	}
 +	a.mu.Unlock()
 +	<-a.done
-+	return a.err
++	a.mu.Lock()
++	a.flushCoalescedLocked()
++	if a.file != nil && !a.fileDone {
++		a.fileDone = true
++		if err := a.file.Sync(); a.err == nil {
++			a.err = err
++		}
++		if err := a.file.Close(); a.err == nil {
++			a.err = err
++		}
++	}
++	err := a.err
++	a.mu.Unlock()
++	return err
 +}
 +
 +// EgressPolicyHolder provides atomic replacement of the active policy. A nil
@@ -4232,6 +4878,83 @@ index 00000000..54560348
 +	holder.snapshot = snapshot
 +	holder.audit = audit
 +	return holder, nil
++}
++
++// NewEgressPolicyHolderWithAuditWriter builds a holder whose audit sink writes
++// to sink instead of opening policy.AuditLog. Decision-site tests inject a
++// failing writer to prove the fail-closed conversion; production entry points
++// use NewEgressPolicyHolder. A nil sink is rejected; a nil policy behaves as
++// in NewEgressPolicyHolder (no sink is attached).
++func NewEgressPolicyHolderWithAuditWriter(policy *EgressPolicy, required bool, sink io.Writer) (*EgressPolicyHolder, error) {
++	if sink == nil {
++		return nil, fmt.Errorf("egress audit writer is nil")
++	}
++	holder := &EgressPolicyHolder{required: required, flows: make(map[uint64]trackedEgressFlow), resolved: make(map[string][]resolvedBinding)}
++	if policy == nil {
++		if required {
++			return nil, fmt.Errorf("egress policy is required but not configured")
++		}
++		return holder, nil
++	}
++	snapshot, err := compileEgressPolicy(policy)
++	if err != nil {
++		return nil, err
++	}
++	audit := newEgressAuditSink()
++	audit.writer = sink
++	audit.injected = true
++	go audit.run()
++	holder.snapshot = snapshot
++	holder.audit = audit
++	return holder, nil
++}
++
++// stampDecision copies the active snapshot's revision and validated
++// correlation metadata onto a decision record. Correlation fields are
++// evidence only; nothing in the decision path is derived from them.
++func stampDecision(snapshot *egressSnapshot, record EgressDecision) EgressDecision {
++	if snapshot == nil {
++		return record
++	}
++	record.SandboxID = snapshot.sandboxID
++	record.Revision = snapshot.revision
++	record.PolicyGeneration = snapshot.policyGeneration
++	record.OpID = snapshot.opID
++	record.ReqID = snapshot.reqID
++	record.SandboxCorrID = snapshot.sandboxID
++	return record
++}
++
++// AuditDecision writes one decision record synchronously (write+flush) using
++// the active snapshot's metadata. Every DECISION site (connection or DNS
++// answer allow/deny) must call it before committing a network action. When
++// the record cannot be persisted and the original action was allow, the
++// record is re-attempted as a deny with reason "audit_write_failed" and the
++// error is returned so the site refuses the action. A holder or policy
++// without an audit sink records nothing and returns nil.
++func (h *EgressPolicyHolder) AuditDecision(record EgressDecision) error {
++	if h == nil {
++		return nil
++	}
++	h.mu.RLock()
++	snapshot, audit := h.snapshot, h.audit
++	if snapshot != nil && audit != nil {
++		record = stampDecision(snapshot, record)
++	}
++	h.mu.RUnlock()
++	if snapshot == nil || audit == nil {
++		return nil
++	}
++	err := audit.recordDecision(record)
++	if err != nil && record.Action == "allow" {
++		flipped := record
++		flipped.Action = "deny"
++		flipped.Outcome = "denied"
++		flipped.Reason = reasonAuditWriteFailed
++		flipped.Count = 0
++		_ = audit.recordDecision(flipped)
++	}
++	return err
 +}
 +
 +// SetHostServicesEnabled records the explicit host-services opt-in. It is set
@@ -4333,7 +5056,7 @@ index 00000000..54560348
 +		h.mu.Unlock()
 +		return nil
 +	}
-+	if h.audit != nil && policy.AuditLog == "" {
++	if h.audit != nil && policy.AuditLog == "" && !h.audit.injected {
 +		return fmt.Errorf("cannot disable the active egress audit log")
 +	}
 +	if h.audit == nil && policy.AuditLog != "" {
@@ -4406,17 +5129,24 @@ index 00000000..54560348
 +	}
 +	if !allowed {
 +		audit := h.audit
-+		h.mu.Unlock()
++		record := EgressDecision{}
++		build := false
 +		if audit != nil {
-+			_ = audit.record(EgressDecision{
-+				SandboxID:   snapshot.sandboxID,
-+				Revision:    snapshot.revision,
++			record = stampDecision(snapshot, EgressDecision{
 +				Protocol:    protocol,
 +				Destination: address,
 +				Port:        port,
 +				Action:      "deny",
++				Reason:      rule,
 +				Rule:        rule,
 +			})
++			build = true
++		}
++		h.mu.Unlock()
++		if build {
++			// The decision is already deny, so a failed record cannot flip
++			// anything; it coalesces or is reported to stderr.
++			_ = audit.recordDecision(record)
 +		}
 +		return 0
 +	}
@@ -4428,22 +5158,31 @@ index 00000000..54560348
 +}
 +
 +// AuditTCP records a decision code and the matched rule identifier without
-+// storing a TLS name or payload.
-+func (h *EgressPolicyHolder) AuditTCP(address string, port uint16, allowed bool, reason, rule string) {
++// storing a TLS name or payload. The write is synchronous and fail-closed at
++// the call site: callers that must convert a failed allow to a deny should
++// check the returned error (or use AuditDecision before committing the
++// action).
++func (h *EgressPolicyHolder) AuditTCP(address string, port uint16, allowed bool, reason, rule string) error {
 +	if h == nil {
-+		return
++		return nil
 +	}
 +	h.mu.RLock()
 +	snapshot, audit := h.snapshot, h.audit
++	record := EgressDecision{}
++	build := false
++	if snapshot != nil && audit != nil {
++		action := "deny"
++		if allowed {
++			action = "allow"
++		}
++		record = stampDecision(snapshot, EgressDecision{Protocol: "tcp", Destination: address, Port: port, Action: action, Reason: reason, Rule: rule})
++		build = true
++	}
 +	h.mu.RUnlock()
-+	if snapshot == nil || audit == nil {
-+		return
++	if !build {
++		return nil
 +	}
-+	action := "deny"
-+	if allowed {
-+		action = "allow"
-+	}
-+	_ = audit.record(EgressDecision{SandboxID: snapshot.sandboxID, Revision: snapshot.revision, Protocol: "tcp", Destination: address, Port: port, Action: action, Reason: reason, Rule: rule})
++	return audit.recordDecision(record)
 +}
 +
 +// TCPRoute distinguishes direct CIDR authorization from a domain candidate.
@@ -4613,17 +5352,30 @@ index 00000000..54560348
 +			rule = "deny:unmatched-domain"
 +		}
 +	}
-+	sandboxID, revision := "", ""
-+	if snapshot != nil {
-+		sandboxID, revision = snapshot.sandboxID, snapshot.revision
-+	}
-+	h.mu.RUnlock()
++	record := EgressDecision{}
++	build := false
 +	if audit != nil && snapshot != nil {
 +		action := "deny"
 +		if allowed {
 +			action = "allow"
 +		}
-+		_ = audit.record(EgressDecision{SandboxID: sandboxID, Revision: revision, Protocol: auditProtocol, Destination: address, Port: port, Action: action, Rule: rule})
++		record = stampDecision(snapshot, EgressDecision{Protocol: auditProtocol, Destination: address, Port: port, Action: action, Rule: rule})
++		build = true
++	}
++	h.mu.RUnlock()
++	if !build {
++		return allowed
++	}
++	// Fail closed: an authorization whose record cannot be persisted is
++	// denied with reason "audit_write_failed".
++	if err := audit.recordDecision(record); err != nil && allowed {
++		allowed = false
++		failed := record
++		failed.Action = "deny"
++		failed.Outcome = "denied"
++		failed.Reason = reasonAuditWriteFailed
++		failed.Count = 0
++		_ = audit.recordDecision(failed)
 +	}
 +	return allowed
 +}
@@ -4638,9 +5390,11 @@ index 00000000..54560348
 +		h.mu.RUnlock()
 +		return
 +	}
-+	d := EgressDecision{SandboxID: snapshot.sandboxID, Revision: snapshot.revision, Protocol: protocol, Destination: address, Port: port, Action: "deny", Rule: rule}
++	d := stampDecision(snapshot, EgressDecision{Protocol: protocol, Destination: address, Port: port, Action: "deny", Reason: rule, Rule: rule})
 +	h.mu.RUnlock()
-+	_ = audit.record(d)
++	// The decision is already deny; a failed record cannot flip anything but
++	// is written synchronously (coalesced) as evidence.
++	_ = audit.recordDecision(d)
 +}
 +
 +func (s *egressSnapshot) hasDomainRule(protocol string, port uint16) bool {
@@ -4711,8 +5465,10 @@ index 00000000..54560348
 +	h.mu.Unlock()
 +}
 +
-+// Allows evaluates a flow and writes one audit record when an audit sink is
-+// configured. A nil holder allows the flow for upstream compatibility.
++// Allows evaluates a flow and writes one synchronous audit record when an
++// audit sink is configured. If the record cannot be persisted, an otherwise
++// allowed flow is denied with reason "audit_write_failed" (fail-closed). A
++// nil holder allows the flow for upstream compatibility.
 +func (h *EgressPolicyHolder) Allows(protocol, address string, port uint16) bool {
 +	if h == nil {
 +		return true
@@ -4737,17 +5493,26 @@ index 00000000..54560348
 +		action = "allow"
 +	}
 +	if snapshot != nil && audit != nil {
-+		// Audit failure must not change the enforcement decision; the
-+		// caller-facing decision is already computed and fail-closed.
-+		_ = audit.record(EgressDecision{
-+			SandboxID:   snapshot.sandboxID,
-+			Revision:    snapshot.revision,
++		record := stampDecision(snapshot, EgressDecision{
 +			Protocol:    protocol,
 +			Destination: address,
 +			Port:        port,
 +			Action:      action,
 +			Rule:        rule,
 +		})
++		// Fail-closed evidence contract: a decision whose record cannot be
++		// persisted is converted to a deny with reason "audit_write_failed".
++		// The trail is the proof of enforcement, so an unwritable audit log
++		// never leaves an unrecorded allow in effect.
++		if err := audit.recordDecision(record); err != nil && allowed {
++			allowed = false
++			failed := record
++			failed.Action = "deny"
++			failed.Outcome = "denied"
++			failed.Reason = reasonAuditWriteFailed
++			failed.Count = 0
++			_ = audit.recordDecision(failed)
++		}
 +	}
 +	return allowed
 +}
@@ -4785,6 +5550,47 @@ index 00000000..54560348
 +		}
 +	}
 +	return false
++}
++
++// DNSAnswerAllowed is the fail-closed audit gate for guest DNS answers. It
++// evaluates DNSAllowed, writes the decision record synchronously, and denies
++// the answer if an otherwise-allowed record cannot be persisted (reason
++// "audit_write_failed"). The record's destination is the normalized query
++// name; no answer payload is stored.
++func (h *EgressPolicyHolder) DNSAnswerAllowed(name string) bool {
++	if h == nil {
++		return true
++	}
++	allowed := h.DNSAllowed(name)
++	h.mu.RLock()
++	snapshot, audit := h.snapshot, h.audit
++	record := EgressDecision{}
++	build := false
++	if snapshot != nil && audit != nil {
++		action := "deny"
++		reason := "dns-name-denied"
++		if allowed {
++			action = "allow"
++			reason = "dns-allowed"
++		}
++		normalized := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
++		record = stampDecision(snapshot, EgressDecision{Protocol: "dns", Destination: normalized, Port: 53, Action: action, Reason: reason})
++		build = true
++	}
++	h.mu.RUnlock()
++	if !build {
++		return allowed
++	}
++	if err := audit.recordDecision(record); err != nil && allowed {
++		failed := record
++		failed.Action = "deny"
++		failed.Outcome = "denied"
++		failed.Reason = reasonAuditWriteFailed
++		failed.Count = 0
++		_ = audit.recordDecision(failed)
++		return false
++	}
++	return allowed
 +}
 +
 +// DNSDenied reports explicit domain denies for aliases in a DNS answer.
@@ -5003,13 +5809,17 @@ index 00000000..54560348
 +}
 diff --git a/pkg/types/egress_policy_test.go b/pkg/types/egress_policy_test.go
 new file mode 100644
-index 00000000..1ac37eca
+index 0000000..373f6d2113a
 --- /dev/null
 +++ b/pkg/types/egress_policy_test.go
-@@ -0,0 +1,872 @@
+@@ -0,0 +1,1450 @@
 +package types
 +
 +import (
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
 +	"net"
 +	"os"
 +	"path/filepath"
@@ -5018,6 +5828,42 @@ index 00000000..1ac37eca
 +	"testing"
 +	"time"
 +)
++
++// errSinkFull simulates a failing audit writer (e.g. ENOSPC).
++var errSinkFull = errors.New("audit sink: no space left on device")
++
++// recordingSink captures every written line; with fail set, it records the
++// attempted line and rejects the write.
++type recordingSink struct {
++	mu    sync.Mutex
++	lines []string
++	fail  error
++}
++
++func (s *recordingSink) Write(p []byte) (int, error) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.lines = append(s.lines, strings.TrimSuffix(string(p), "\n"))
++	if s.fail != nil {
++		return 0, s.fail
++	}
++	return len(p), nil
++}
++
++func (s *recordingSink) recorded() []string {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return append([]string(nil), s.lines...)
++}
++
++func decodeLine(t *testing.T, line string) map[string]any {
++	t.Helper()
++	var record map[string]any
++	if err := json.Unmarshal([]byte(line), &record); err != nil {
++		t.Fatalf("decode audit line %q: %v", line, err)
++	}
++	return record
++}
 +
 +func TestEgressPolicyAllowlist(t *testing.T) {
 +	policy := &EgressPolicy{Revision: "r1", Allow: []EgressRule{{
@@ -5879,9 +6725,547 @@ index 00000000..1ac37eca
 +		t.Fatal("renewed exact grant was not authorized")
 +	}
 +}
++
++// P1: a decision record that cannot be persisted must flip the decision to a
++// deny with reason audit_write_failed. The healthy-writer positive control
++// must keep the original decision unchanged.
++func TestEgressAuditWriteFailureFlipsDecision(t *testing.T) {
++	policy := &EgressPolicy{
++		Revision: "r1",
++		Allow:    []EgressRule{{ID: "rul_allow", Protocol: "tcp", CIDR: "127.0.0.1/32", Port: 39489}},
++	}
++
++	healthy := &recordingSink{}
++	holder, err := NewEgressPolicyHolderWithAuditWriter(policy, true, healthy)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !holder.Allows("tcp", "127.0.0.1", 39489) {
++		t.Fatal("positive control: healthy writer must not change an allow")
++	}
++	if holder.Allows("tcp", "127.0.0.1", 443) {
++		t.Fatal("positive control: healthy writer must not change a deny")
++	}
++	if got := len(healthy.recorded()); got != 2 {
++		t.Fatalf("healthy sink recorded %d lines, want 2", got)
++	}
++	for _, line := range healthy.recorded() {
++		if strings.Contains(line, reasonAuditWriteFailed) {
++			t.Fatalf("healthy writer must not produce fail-closed conversions: %s", line)
++		}
++	}
++	if err := holder.Close(); err != nil {
++		t.Fatal(err)
++	}
++
++	failing := &recordingSink{fail: errSinkFull}
++	holder, err = NewEgressPolicyHolderWithAuditWriter(policy, true, failing)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer holder.Close()
++	if holder.Allows("tcp", "127.0.0.1", 39489) {
++		t.Fatal("an allow whose record cannot be written must be denied")
++	}
++	if holder.Allows("tcp", "127.0.0.1", 443) {
++		t.Fatal("deny must stay denied when the writer fails")
++	}
++	lines := failing.recorded()
++	if len(lines) < 2 {
++		t.Fatalf("expected the allow attempt and the flipped deny, got %d lines", len(lines))
++	}
++	flipped := decodeLine(t, lines[1])
++	if flipped["action"] != "deny" || flipped["reason"] != reasonAuditWriteFailed || flipped["outcome"] != "denied" {
++		t.Fatalf("flipped record = %v", flipped)
++	}
++	if err := holder.AuditDecision(EgressDecision{Protocol: "tcp", Destination: "127.0.0.1", Port: 39489, Action: "allow", Reason: "flow-allowed"}); err == nil {
++		t.Fatal("AuditDecision must surface writer errors to the decision site")
++	}
++
++	// AuthorizeDomain (QUIC/TLS name gate) must also fail closed.
++	domainPolicy := &EgressPolicy{
++		Revision: "d1",
++		Allow:    []EgressRule{{Protocol: "tcp", Domain: "api.example.test", Port: 443}},
++	}
++	failingDomain := &recordingSink{fail: errSinkFull}
++	holder, err = NewEgressPolicyHolderWithAuditWriter(domainPolicy, true, failingDomain)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer holder.Close()
++	holder.RecordDNS("api.example.test", []net.IPAddr{{IP: net.ParseIP("192.0.2.4")}})
++	if holder.AuthorizeDomain("tcp", "192.0.2.4", 443, "api.example.test", "tls") {
++		t.Fatal("AuthorizeDomain must deny when the allow record cannot be written")
++	}
++	found := false
++	for _, line := range failingDomain.recorded() {
++		if strings.Contains(line, `"`+reasonAuditWriteFailed+`"`) || strings.Contains(line, reasonAuditWriteFailed) {
++			found = true
++		}
++	}
++	if !found {
++		t.Fatalf("missing audit_write_failed evidence: %v", failingDomain.recorded())
++	}
++
++	// The DNS answer gate fails closed on a writer error.
++	failingDNS := &recordingSink{fail: errSinkFull}
++	dnsHolder, err := NewEgressPolicyHolderWithAuditWriter(&EgressPolicy{
++		Revision: "n1",
++		Allow:    []EgressRule{{Protocol: "tcp", CIDR: "192.0.2.0/24", Port: 443}},
++	}, true, failingDNS)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer dnsHolder.Close()
++	if dnsHolder.DNSAnswerAllowed("api.example.test.") {
++		t.Fatal("a DNS answer whose allow record cannot be written must be refused")
++	}
++	var sawDeny bool
++	for _, line := range failingDNS.recorded() {
++		if strings.Contains(line, reasonAuditWriteFailed) {
++			sawDeny = true
++		}
++	}
++	if !sawDeny {
++		t.Fatalf("DNS fail-closed conversion not recorded: %v", failingDNS.recorded())
++	}
++}
++
++// DNSAnswerAllowed writes decision records for both DNS outcomes.
++func TestDNSAnswerAllowedRecordsDecisions(t *testing.T) {
++	sink := &recordingSink{}
++	// Domain-only allow rules restrict resolution to the named domains; an
++	// overlapping deny removes one of them. (A domain deny next to an IP
++	// allow is rejected at compile time by design.)
++	holder, err := NewEgressPolicyHolderWithAuditWriter(&EgressPolicy{
++		Revision: "n1",
++		Allow:    []EgressRule{{Protocol: "tcp", Domain: "api.example.test", Port: 443}},
++		Deny:     []EgressRule{{Protocol: "tcp", Domain: "blocked.example.test", Port: 443}},
++	}, true, sink)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer holder.Close()
++	if !holder.DNSAnswerAllowed("api.example.test.") {
++		t.Fatal("name covered by a CIDR allow must stay resolvable")
++	}
++	if holder.DNSAnswerAllowed("blocked.example.test.") {
++		t.Fatal("denied name must not be answerable")
++	}
++	lines := sink.recorded()
++	if len(lines) != 2 {
++		t.Fatalf("recorded %d lines, want 2", len(lines))
++	}
++	allow := decodeLine(t, lines[0])
++	if allow["protocol"] != "dns" || allow["destination"] != "api.example.test" || allow["port"] != float64(53) || allow["action"] != "allow" || allow["outcome"] != "ok" || allow["reason"] != "dns-allowed" {
++		t.Fatalf("DNS allow record = %v", allow)
++	}
++	deny := decodeLine(t, lines[1])
++	if deny["action"] != "deny" || deny["outcome"] != "denied" || deny["reason"] != "dns-name-denied" {
++		t.Fatalf("DNS deny record = %v", deny)
++	}
++}
++
++// P3 golden: the schema v2 decision line must carry the exact field set.
++func TestEgressAuditSchemaV2Golden(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "egress.jsonl")
++	holder, err := NewEgressPolicyHolder(&EgressPolicy{
++		Revision:         "r9",
++		SandboxID:        "sbx-golden",
++		OpID:             "op-7",
++		RequestID:        "req_7",
++		PolicyGeneration: "gen-77",
++		AuditLog:         path,
++		Allow:            []EgressRule{{ID: "rul_cidr", Protocol: "tcp", CIDR: "127.0.0.1/32", Port: 39489}},
++	}, true)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !holder.Allows("tcp", "127.0.0.1", 39489) {
++		t.Fatal("expected allow")
++	}
++	if holder.Allows("tcp", "127.0.0.1", 443) {
++		t.Fatal("expected deny")
++	}
++	if err := holder.Close(); err != nil {
++		t.Fatal(err)
++	}
++	content, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	lines := strings.Split(strings.TrimSuffix(string(content), "\n"), "\n")
++	if len(lines) != 2 {
++		t.Fatalf("audit lines = %d, want 2: %s", len(lines), content)
++	}
++
++	allow := decodeLine(t, lines[0])
++	if ts, ok := allow["time"].(string); !ok || ts == "" {
++		t.Fatalf("missing timestamp: %v", allow)
++	} else if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
++		t.Fatalf("timestamp not RFC3339Nano: %v", err)
++	}
++	delete(allow, "time")
++	wantAllow := map[string]any{
++		"schema_version":    float64(2),
++		"event":             "rheic.egress.decision",
++		"component":         "gateway",
++		"outcome":           "ok",
++		"action":            "allow",
++		"sandboxId":         "sbx-golden",
++		"sandbox_id":        "sbx-golden",
++		"revision":          "r9",
++		"policy_generation": "gen-77",
++		"op_id":             "op-7",
++		"req_id":            "req_7",
++		"protocol":          "tcp",
++		"destination":       "127.0.0.1",
++		"port":              float64(39489),
++		// Allows() records decide() verbatim, so the allow rule label
++		// carries the "allow:" prefix; TCPRoute/AuditTCP strip it.
++		"rule": "allow:rul_cidr",
++	}
++	if fmt.Sprint(allow) != fmt.Sprint(wantAllow) {
++		t.Fatalf("allow golden mismatch:\n got %v\nwant %v", allow, wantAllow)
++	}
++	deny := decodeLine(t, lines[1])
++	delete(deny, "time")
++	wantDeny := map[string]any{
++		"schema_version":    float64(2),
++		"event":             "rheic.egress.decision",
++		"component":         "gateway",
++		"outcome":           "denied",
++		"action":            "deny",
++		"sandboxId":         "sbx-golden",
++		"sandbox_id":        "sbx-golden",
++		"revision":          "r9",
++		"policy_generation": "gen-77",
++		"op_id":             "op-7",
++		"req_id":            "req_7",
++		"protocol":          "tcp",
++		"destination":       "127.0.0.1",
++		"port":              float64(443),
++		"rule":              "default-deny",
++	}
++	if fmt.Sprint(deny) != fmt.Sprint(wantDeny) {
++		t.Fatalf("deny golden mismatch:\n got %v\nwant %v", deny, wantDeny)
++	}
++}
++
++// P4: the provisioning JSON (the /egress-policy/reload body and the config
++// file egressPolicy block) accepts the optional correlation fields and
++// round-trips them.
++func TestEgressPolicyProvisioningJSONCorrelationFields(t *testing.T) {
++	var p EgressPolicy
++	body := `{"revision":"r1","sandboxID":"sbx","opID":"op-9","reqID":"req-9","policyGeneration":"gen-9","allow":[{"protocol":"tcp","cidr":"127.0.0.1/32","port":443}]}`
++	if err := json.Unmarshal([]byte(body), &p); err != nil {
++		t.Fatal(err)
++	}
++	if p.OpID != "op-9" || p.RequestID != "req-9" || p.PolicyGeneration != "gen-9" {
++		t.Fatalf("decoded correlation fields = %+v", p)
++	}
++	encoded, err := json.Marshal(&p)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, want := range []string{`"opID":"op-9"`, `"reqID":"req-9"`, `"policyGeneration":"gen-9"`} {
++		if !strings.Contains(string(encoded), want) {
++			t.Fatalf("round-trip lost %s: %s", want, encoded)
++		}
++	}
++}
++
++// P4: correlation IDs are validated at provisioning; invalid values are
++// treated as absent, and they never authorize anything.
++func TestCorrelationValidationAndNonAuthorization(t *testing.T) {
++	long := strings.Repeat("x", 65)
++	cases := []struct {
++		name       string
++		opID       string
++		reqID      string
++		generation string
++		sandboxID  string
++		want       map[string]string
++	}{
++		{
++			name: "valid correlation ids are stamped",
++			opID: "op-1", reqID: "req_2", generation: "gen-3", sandboxID: "sbx_4",
++			want: map[string]string{"op_id": "op-1", "req_id": "req_2", "policy_generation": "gen-3", "sandbox_id": "sbx_4", "sandboxId": "sbx_4"},
++		},
++		{
++			name: "invalid values are treated as absent",
++			opID: "bad id!", reqID: long, generation: "a/b", sandboxID: "not valid",
++			want: map[string]string{},
++		},
++		{
++			name: "absent stays absent",
++			want: map[string]string{},
++		},
++		{
++			name: "max length is accepted",
++			opID: strings.Repeat("y", 64), reqID: "R", generation: "G", sandboxID: "S",
++			want: map[string]string{"op_id": strings.Repeat("y", 64), "req_id": "R", "policy_generation": "G", "sandbox_id": "S", "sandboxId": "S"},
++		},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			sink := &recordingSink{}
++			holder, err := NewEgressPolicyHolderWithAuditWriter(&EgressPolicy{
++				Revision:         "cv",
++				SandboxID:        tc.sandboxID,
++				OpID:             tc.opID,
++				RequestID:        tc.reqID,
++				PolicyGeneration: tc.generation,
++				Allow:            []EgressRule{{Protocol: "tcp", CIDR: "127.0.0.1/32", Port: 39489}},
++			}, true, sink)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer holder.Close()
++			if !holder.Allows("tcp", "127.0.0.1", 39489) {
++				t.Fatal("expected allow")
++			}
++			record := decodeLine(t, sink.recorded()[0])
++			for key, want := range tc.want {
++				if got := record[key]; got != want {
++					t.Fatalf("record[%q] = %v, want %q (full record %v)", key, got, want, record)
++				}
++			}
++			for _, key := range []string{"op_id", "req_id", "policy_generation", "sandbox_id", "sandboxId"} {
++				if _, wanted := tc.want[key]; !wanted {
++					if _, present := record[key]; present {
++						t.Fatalf("invalid correlation value leaked into %q: %v", key, record)
++					}
++				}
++			}
++		})
++	}
++
++	// NEVER authorize from correlation metadata: values that look like
++	// destinations must not widen the policy.
++	sink := &recordingSink{}
++	holder, err := NewEgressPolicyHolderWithAuditWriter(&EgressPolicy{
++		Revision:  "cv",
++		SandboxID: "sbx-127-0-0-1",
++		OpID:      "39489",
++		RequestID: "dst-127-0-0-1",
++	}, true, sink)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer holder.Close()
++	if holder.Allows("tcp", "127.0.0.1", 39489) {
++		t.Fatal("correlation metadata must never authorize a flow")
++	}
++	record := decodeLine(t, sink.recorded()[0])
++	if record["action"] != "deny" || record["sandbox_id"] != "sbx-127-0-0-1" || record["req_id"] != "dst-127-0-0-1" {
++		t.Fatalf("denied flow must still carry validated correlation: %v", record)
++	}
++
++	// Updates carry the new generation; invalid values drop to absent.
++	if err := holder.Update(&EgressPolicy{
++		Revision:         "cv2",
++		SandboxID:        "sbx-new",
++		PolicyGeneration: "bad gen!",
++		Allow:            []EgressRule{{Protocol: "tcp", CIDR: "127.0.0.1/32", Port: 39489}},
++	}); err != nil {
++		t.Fatal(err)
++	}
++	before := len(sink.recorded())
++	if !holder.Allows("tcp", "127.0.0.1", 39489) {
++		t.Fatal("expected allow after update")
++	}
++	record = decodeLine(t, sink.recorded()[before])
++	if record["sandbox_id"] != "sbx-new" || record["revision"] != "cv2" {
++		t.Fatalf("update did not restamp correlation: %v", record)
++	}
++	if _, present := record["policy_generation"]; present {
++		t.Fatalf("invalid policy_generation leaked: %v", record)
++	}
++}
++
++// P5: deny records coalesce per (host,port,proto,action,reason) inside a
++// bounded window; allow records never coalesce. A fake clock drives the
++// window.
++func TestEgressAuditDenyCoalescing(t *testing.T) {
++	clock := time.Unix(1700000000, 0).UTC()
++	sink := &recordingSink{}
++	a := newEgressAuditSink()
++	a.writer = sink
++	a.now = func() time.Time { return clock }
++
++	deny := func(reason string) EgressDecision {
++		return EgressDecision{Protocol: "tcp", Destination: "203.0.2.10", Port: 443, Action: "deny", Reason: reason}
++	}
++	if err := a.recordDecision(deny("default-deny")); err != nil {
++		t.Fatal(err)
++	}
++	clock = clock.Add(500 * time.Millisecond)
++	if err := a.recordDecision(deny("default-deny")); err != nil {
++		t.Fatal(err)
++	}
++	clock = clock.Add(400 * time.Millisecond)
++	if err := a.recordDecision(deny("default-deny")); err != nil {
++		t.Fatal(err)
++	}
++	if got := len(sink.recorded()); got != 1 {
++		t.Fatalf("denies inside one window must coalesce, got %d lines", got)
++	}
++
++	// A different reason is a different key and writes immediately.
++	clock = clock.Add(10 * time.Millisecond)
++	if err := a.recordDecision(deny("deny:rul_x")); err != nil {
++		t.Fatal(err)
++	}
++	if got := len(sink.recorded()); got != 2 {
++		t.Fatalf("distinct deny keys must not merge, got %d lines", got)
++	}
++
++	// Allows in the same window always record their own line.
++	for i := 0; i < 2; i++ {
++		if err := a.recordDecision(EgressDecision{Protocol: "tcp", Destination: "203.0.2.10", Port: 443, Action: "allow", Reason: "flow-allowed"}); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if got := len(sink.recorded()); got != 4 {
++		t.Fatalf("allow lines must never coalesce, got %d lines", got)
++	}
++
++	// Crossing the window flushes the merged count line, then the new first
++	// line of the fresh window.
++	clock = clock.Add(time.Second)
++	if err := a.recordDecision(deny("default-deny")); err != nil {
++		t.Fatal(err)
++	}
++	lines := sink.recorded()
++	if len(lines) != 6 {
++		t.Fatalf("window roll must emit the merged line plus the new first line, got %d", len(lines))
++	}
++	merged := decodeLine(t, lines[4])
++	if merged["count"] != float64(2) || merged["action"] != "deny" || merged["reason"] != "default-deny" {
++		t.Fatalf("merged line = %v, want count 2", merged)
++	}
++	fresh := decodeLine(t, lines[5])
++	if _, present := fresh["count"]; present {
++		t.Fatalf("first line of a window must not carry count: %v", fresh)
++	}
++	if fresh["action"] != "deny" || fresh["reason"] != "default-deny" {
++		t.Fatalf("fresh window line = %v", fresh)
++	}
++}
++
++// P5: the coalescing map is bounded; eviction flushes the oldest window's
++// pending merged line and the evicted key's next first deny is still written.
++func TestEgressAuditCoalesceCapEviction(t *testing.T) {
++	clock := time.Unix(1700000000, 0).UTC()
++	sink := &recordingSink{}
++	a := newEgressAuditSink()
++	a.writer = sink
++	a.now = func() time.Time { return clock }
++
++	denyFor := func(host string) EgressDecision {
++		return EgressDecision{Protocol: "tcp", Destination: host, Port: 443, Action: "deny", Reason: "default-deny"}
++	}
++	for i := 0; i < egressCoalesceMaxKeys; i++ {
++		clock = clock.Add(time.Nanosecond)
++		if err := a.recordDecision(denyFor(fmt.Sprintf("192.0.2.%d", i))); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if got := len(sink.recorded()); got != egressCoalesceMaxKeys {
++		t.Fatalf("seed lines = %d, want %d", got, egressCoalesceMaxKeys)
++	}
++
++	// Merge one repeat into the oldest window (its clock is the oldest).
++	if err := a.recordDecision(denyFor("192.0.2.0")); err != nil {
++		t.Fatal(err)
++	}
++	if got := len(sink.recorded()); got != egressCoalesceMaxKeys {
++		t.Fatalf("repeat must coalesce, lines = %d", got)
++	}
++
++	// Overflow: the new key evicts the oldest entry, which flushes its
++	// pending merged line before the new first line is written.
++	if err := a.recordDecision(denyFor("198.51.100.1")); err != nil {
++		t.Fatal(err)
++	}
++	lines := sink.recorded()
++	if len(lines) != egressCoalesceMaxKeys+2 {
++		t.Fatalf("eviction must flush pending plus write the new first line, got %d extra", len(lines)-egressCoalesceMaxKeys)
++	}
++	merged := decodeLine(t, lines[egressCoalesceMaxKeys])
++	if merged["count"] != float64(1) || merged["destination"] != "192.0.2.0" {
++		t.Fatalf("evicted pending must be written as a merged line: %v", merged)
++	}
++	overflow := decodeLine(t, lines[egressCoalesceMaxKeys+1])
++	if overflow["destination"] != "198.51.100.1" {
++		t.Fatalf("overflow first line = %v", overflow)
++	}
++
++	// The evicted key is untracked again: its next first deny is written
++	// immediately and never dropped.
++	if err := a.recordDecision(denyFor("192.0.2.0")); err != nil {
++		t.Fatal(err)
++	}
++	lines = sink.recorded()
++	if len(lines) != egressCoalesceMaxKeys+3 {
++		t.Fatalf("first deny of an untracked key must be recorded, got %d lines", len(lines))
++	}
++	revived := decodeLine(t, lines[len(lines)-1])
++	if _, present := revived["count"]; present {
++		t.Fatalf("revived first deny must not carry count: %v", revived)
++	}
++}
++
++// P0: when the audit file hits its size cap, later decision writes fail and
++// allows are denied (fail-closed at the cap), with an audit-incomplete
++// marker at the truncation point.
++func TestEgressAuditSizeCapFailsClosed(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "egress.jsonl")
++	filler, err := os.Create(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := filler.Write(make([]byte, egressAuditMaxBytes-egressAuditMarkerReserve)); err != nil {
++		t.Fatal(err)
++	}
++	if err := filler.Close(); err != nil {
++		t.Fatal(err)
++	}
++	holder, err := NewEgressPolicyHolder(&EgressPolicy{
++		Revision: "cap",
++		AuditLog: path,
++		Allow:    []EgressRule{{Protocol: "tcp", CIDR: "127.0.0.1/32", Port: 39489}},
++	}, true)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if holder.Allows("tcp", "127.0.0.1", 39489) {
++		t.Fatal("an allow at the audit size cap must fail closed")
++	}
++	if err := holder.Close(); err != nil {
++		t.Fatal(err)
++	}
++	file, err := os.Open(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer file.Close()
++	if _, err := file.Seek(-4096, io.SeekEnd); err != nil {
++		t.Fatal(err)
++	}
++	buf := make([]byte, 4096)
++	n, err := file.Read(buf)
++	if err != nil && n == 0 {
++		t.Fatal(err)
++	}
++	if !strings.Contains(string(buf[:n]), `"reason":"size-limit"`) {
++		t.Fatalf("tail of capped audit log lacks size-limit marker: %s", buf[:n])
++	}
++}
 diff --git a/pkg/virtualnetwork/gateway_mux_git_test.go b/pkg/virtualnetwork/gateway_mux_git_test.go
 new file mode 100644
-index 00000000..d1492618
+index 0000000..d1492618207
 --- /dev/null
 +++ b/pkg/virtualnetwork/gateway_mux_git_test.go
 @@ -0,0 +1,39 @@
@@ -5926,7 +7310,7 @@ index 00000000..d1492618
 +}
 diff --git a/pkg/virtualnetwork/ipv6_publish_test.go b/pkg/virtualnetwork/ipv6_publish_test.go
 new file mode 100644
-index 00000000..04e30f9e
+index 0000000..04e30f9e897
 --- /dev/null
 +++ b/pkg/virtualnetwork/ipv6_publish_test.go
 @@ -0,0 +1,59 @@
@@ -5991,7 +7375,7 @@ index 00000000..04e30f9e
 +}
 diff --git a/pkg/virtualnetwork/ipv6_ra.go b/pkg/virtualnetwork/ipv6_ra.go
 new file mode 100644
-index 00000000..942d21e6
+index 0000000..942d21e614c
 --- /dev/null
 +++ b/pkg/virtualnetwork/ipv6_ra.go
 @@ -0,0 +1,201 @@
@@ -6198,7 +7582,7 @@ index 00000000..942d21e6
 +}
 diff --git a/pkg/virtualnetwork/ipv6_ra_test.go b/pkg/virtualnetwork/ipv6_ra_test.go
 new file mode 100644
-index 00000000..50fe3490
+index 0000000..50fe349009a
 --- /dev/null
 +++ b/pkg/virtualnetwork/ipv6_ra_test.go
 @@ -0,0 +1,236 @@
@@ -6439,10 +7823,10 @@ index 00000000..50fe3490
 +	}
 +}
 diff --git a/pkg/virtualnetwork/mux.go b/pkg/virtualnetwork/mux.go
-index 36ec4571..8d49f73c 100644
+index 36ec4571ebd..8d49f73c857 100644
 --- a/pkg/virtualnetwork/mux.go
 +++ b/pkg/virtualnetwork/mux.go
-@@ -103,7 +103,11 @@ func (n *VirtualNetwork) newServicesMux() *http.ServeMux {
+@@ -103,7 +103,11 @@
  
  // ServicesMux returns the services mux wrapped with audit logging middleware.
  func (n *VirtualNetwork) ServicesMux() http.Handler {
@@ -6455,7 +7839,7 @@ index 36ec4571..8d49f73c 100644
  }
  
  // Mux returns the full mux (services + connect) wrapped with audit logging middleware.
-@@ -153,6 +157,7 @@ func (n *VirtualNetwork) GatewayMux() *http.ServeMux {
+@@ -153,6 +157,7 @@
  	gatewayMux := http.NewServeMux()
  	gatewayMux.Handle("/services/forwarder/all", handler)
  	gatewayMux.Handle("/services/forwarder/expose", handler)
@@ -6465,7 +7849,7 @@ index 36ec4571..8d49f73c 100644
  	return gatewayMux
 diff --git a/pkg/virtualnetwork/nat_table_test.go b/pkg/virtualnetwork/nat_table_test.go
 new file mode 100644
-index 00000000..01cba224
+index 0000000..01cba2240ca
 --- /dev/null
 +++ b/pkg/virtualnetwork/nat_table_test.go
 @@ -0,0 +1,170 @@
@@ -6640,7 +8024,7 @@ index 00000000..01cba224
 +	}
 +}
 diff --git a/pkg/virtualnetwork/services.go b/pkg/virtualnetwork/services.go
-index 3ed9a996..c4f19b27 100644
+index 3ed9a996fa9..c4f19b27e1b 100644
 --- a/pkg/virtualnetwork/services.go
 +++ b/pkg/virtualnetwork/services.go
 @@ -1,8 +1,12 @@
@@ -6656,7 +8040,7 @@ index 3ed9a996..c4f19b27 100644
  	"sync"
  	"time"
  
-@@ -21,19 +25,22 @@ import (
+@@ -21,19 +25,22 @@
  	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
  )
  
@@ -6685,7 +8069,7 @@ index 3ed9a996..c4f19b27 100644
  	if err != nil {
  		return nil, err
  	}
-@@ -47,18 +54,127 @@ func addServices(configuration *types.Configuration, s *stack.Stack, ipPool *tap
+@@ -47,18 +54,127 @@
  	mux.Handle("/forwarder/", http.StripPrefix("/forwarder", portsForwarder.Mux()))
  	mux.Handle("/dhcp/", http.StripPrefix("/dhcp", dhcpMux))
  	mux.Handle("/dns/", http.StripPrefix("/dns", dnsMux))
@@ -6815,7 +8199,7 @@ index 3ed9a996..c4f19b27 100644
  	udpConn, err := gonet.DialUDP(s, &tcpip.FullAddress{
  		NIC:  1,
  		Addr: tcpip.AddrFrom4Slice(net.ParseIP(configuration.GatewayIP).To4()),
-@@ -77,10 +193,25 @@ func dnsServer(configuration *types.Configuration, s *stack.Stack) (http.Handler
+@@ -77,10 +193,25 @@
  		return nil, err
  	}
  
@@ -6843,10 +8227,10 @@ index 3ed9a996..c4f19b27 100644
  	go func() {
  		if err := server.Serve(); err != nil {
 diff --git a/pkg/virtualnetwork/virtualnetwork.go b/pkg/virtualnetwork/virtualnetwork.go
-index b2b44614..95b80048 100644
+index b2b44614435..95b80048b1a 100644
 --- a/pkg/virtualnetwork/virtualnetwork.go
 +++ b/pkg/virtualnetwork/virtualnetwork.go
-@@ -17,8 +17,10 @@ import (
+@@ -17,8 +17,10 @@
  	"gvisor.dev/gvisor/pkg/tcpip/link/sniffer"
  	"gvisor.dev/gvisor/pkg/tcpip/network/arp"
  	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
@@ -6857,7 +8241,7 @@ index b2b44614..95b80048 100644
  	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
  	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
  )
-@@ -30,6 +32,8 @@ type VirtualNetwork struct {
+@@ -30,6 +32,8 @@
  	servicesMux    http.Handler
  	ipPool         *tap.IPPool
  	portsForwarder *forwarder.PortsForwarder
@@ -6866,7 +8250,7 @@ index b2b44614..95b80048 100644
  	apiToken       string // Bearer token for API authentication
  }
  
-@@ -41,9 +45,18 @@ func (n *VirtualNetwork) SetAPIToken(token string) {
+@@ -41,9 +45,18 @@
  	n.apiToken = token
  }
  
@@ -6886,7 +8270,7 @@ index b2b44614..95b80048 100644
  	ipPool, err := tap.NewIPPool(configuration.Subnet)
  	if err != nil {
  		return nil, fmt.Errorf("cannot parse subnet CIDR: %w", err)
-@@ -87,14 +100,23 @@ func New(configuration *types.Configuration) (*VirtualNetwork, error) {
+@@ -87,14 +100,23 @@
  		return nil, fmt.Errorf("cannot create network stack: %w", err)
  	}
  
@@ -6912,7 +8296,7 @@ index b2b44614..95b80048 100644
  
  	return &VirtualNetwork{
  		configuration:  configuration,
-@@ -103,11 +125,33 @@ func New(configuration *types.Configuration) (*VirtualNetwork, error) {
+@@ -103,11 +125,33 @@
  		servicesMux:    mux,
  		ipPool:         ipPool,
  		portsForwarder: portsForwarder,
@@ -6947,7 +8331,7 @@ index b2b44614..95b80048 100644
  }
  
  func (n *VirtualNetwork) BytesSent() uint64 {
-@@ -125,17 +169,17 @@ func (n *VirtualNetwork) BytesReceived() uint64 {
+@@ -125,17 +169,17 @@
  }
  
  func createStack(configuration *types.Configuration, endpoint stack.LinkEndpoint) (*stack.Stack, error) {
@@ -6976,7 +8360,7 @@ index b2b44614..95b80048 100644
  
  	if err := s.CreateNIC(1, endpoint); err != nil {
  		return nil, errors.New(err.String())
-@@ -147,6 +191,48 @@ func createStack(configuration *types.Configuration, endpoint stack.LinkEndpoint
+@@ -147,6 +191,48 @@
  	}, stack.AddressProperties{}); err != nil {
  		return nil, errors.New(err.String())
  	}
@@ -7025,7 +8409,7 @@ index b2b44614..95b80048 100644
  
  	s.SetSpoofing(1, true)
  	s.SetPromiscuousMode(1, true)
-@@ -160,19 +246,42 @@ func createStack(configuration *types.Configuration, endpoint stack.LinkEndpoint
+@@ -160,19 +246,42 @@
  	if err != nil {
  		return nil, fmt.Errorf("cannot parse subnet: %w", err)
  	}
@@ -7071,7 +8455,7 @@ index b2b44614..95b80048 100644
  	for local, remote := range configuration.Forwards {
  		if strings.HasPrefix(local, "udp:") {
  			if err := fw.Expose(types.UDP, strings.TrimPrefix(local, "udp:"), remote); err != nil {
-@@ -186,3 +295,31 @@ func createPortsForwarder(configuration *types.Configuration, s *stack.Stack) (*
+@@ -186,3 +295,31 @@
  	}
  	return fw, nil
  }
@@ -7105,7 +8489,7 @@ index b2b44614..95b80048 100644
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/dhcpv6configurationfromndpra_string.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/dhcpv6configurationfromndpra_string.go
 new file mode 100644
-index 00000000..09ba133b
+index 0000000..09ba133b1b7
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/dhcpv6configurationfromndpra_string.go
 @@ -0,0 +1,40 @@
@@ -7151,7 +8535,7 @@ index 00000000..09ba133b
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/icmp.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/icmp.go
 new file mode 100644
-index 00000000..eb85f450
+index 0000000..eb85f4505cf
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/icmp.go
 @@ -0,0 +1,1230 @@
@@ -8387,7 +9771,7 @@ index 00000000..eb85f450
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6.go
 new file mode 100644
-index 00000000..b4a38a56
+index 0000000..b4a38a5669c
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6.go
 @@ -0,0 +1,2918 @@
@@ -11311,7 +12695,7 @@ index 00000000..b4a38a56
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6_state_autogen.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6_state_autogen.go
 new file mode 100644
-index 00000000..2f92edd6
+index 0000000..2f92edd6228
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ipv6_state_autogen.go
 @@ -0,0 +1,1046 @@
@@ -12363,7 +13747,7 @@ index 00000000..2f92edd6
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/mld.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/mld.go
 new file mode 100644
-index 00000000..56dba24b
+index 0000000..56dba24b75d
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/mld.go
 @@ -0,0 +1,478 @@
@@ -12847,7 +14231,7 @@ index 00000000..56dba24b
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ndp.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ndp.go
 new file mode 100644
-index 00000000..5be647ed
+index 0000000..5be647ed53b
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/ndp.go
 @@ -0,0 +1,2033 @@
@@ -14886,7 +16270,7 @@ index 00000000..5be647ed
 +}
 diff --git a/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/stats.go b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/stats.go
 new file mode 100644
-index 00000000..6c5d98e2
+index 0000000..6c5d98e230b
 --- /dev/null
 +++ b/vendor/gvisor.dev/gvisor/pkg/tcpip/network/ipv6/stats.go
 @@ -0,0 +1,145 @@
@@ -15036,10 +16420,10 @@ index 00000000..6c5d98e2
 +
 +// LINT.ThenChange(../../tcpip.go:ICMPv6Stats)
 diff --git a/vendor/modules.txt b/vendor/modules.txt
-index ad2e3d33..9ed48df7 100644
+index ad2e3d33708..9ed48df7ed4 100644
 --- a/vendor/modules.txt
 +++ b/vendor/modules.txt
-@@ -309,6 +309,7 @@ gvisor.dev/gvisor/pkg/tcpip/network/internal/fragmentation
+@@ -309,6 +309,7 @@
  gvisor.dev/gvisor/pkg/tcpip/network/internal/ip
  gvisor.dev/gvisor/pkg/tcpip/network/internal/multicast
  gvisor.dev/gvisor/pkg/tcpip/network/ipv4
