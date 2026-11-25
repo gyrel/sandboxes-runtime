@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- ADR-0009 create journals use schema 2 with an optional validated `op_id`; schema 1 remains readable.
+
 ## v0.0.64 — 2026-11-24
 
 ### Added

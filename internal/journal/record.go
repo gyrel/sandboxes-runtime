@@ -10,6 +10,8 @@ import (
 	"io"
 	"path"
 	"strings"
+
+	"github.com/rheic/sandboxes-core/ids"
 )
 
 const (
@@ -23,6 +25,7 @@ const (
 type Record struct {
 	Schema        int        `json:"schema"`
 	ID            string     `json:"id"`
+	OpID          string     `json:"op_id,omitempty"`
 	Token         string     `json:"token"`
 	Phase         string     `json:"phase"`
 	Resources     []Resource `json:"resources"`
@@ -69,6 +72,12 @@ func validateFields(data []byte) error {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return errors.New("invalid journal object")
 	}
+	if value, ok := fields["op_id"]; ok {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return errors.New("null journal op_id")
+		}
+		delete(fields, "op_id")
+	}
 	if err := exactFields(fields, "schema", "id", "token", "phase", "resources", "started_at_unix"); err != nil {
 		return err
 	}
@@ -103,8 +112,11 @@ func exactFields(fields map[string]json.RawMessage, names ...string) error {
 
 // Validate checks structural invariants without trusting paths as ownership proof.
 func (r Record) Validate() error {
-	if r.Schema != 1 || !validName(r.ID) || r.StartedAtUnix <= 0 {
+	if !validHeader(r) {
 		return errors.New("invalid journal header")
+	}
+	if !validOpID(r.Schema, r.OpID) {
+		return errors.New("invalid journal op_id")
 	}
 	token, err := hex.DecodeString(r.Token)
 	if err != nil || len(token) != 16 || r.Token != strings.ToLower(r.Token) {
@@ -221,4 +233,12 @@ func consumeObject(decoder *json.Decoder, depth int) error {
 	}
 	_, err := decoder.Token()
 	return err
+}
+
+func validHeader(r Record) bool {
+	return (r.Schema == 1 || r.Schema == 2) && validName(r.ID) && r.StartedAtUnix > 0
+}
+
+func validOpID(schema int, id string) bool {
+	return id == "" || (schema == 2 && strings.HasPrefix(id, "op_") && ids.Validate(id) == nil)
 }
