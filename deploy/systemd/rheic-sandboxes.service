@@ -1,0 +1,16 @@
+[Unit]
+Description=Rheic SandBoxes alpha daemon
+
+[Service]
+Type=simple
+Environment=RHEIC_STATE_DIR=%h/.local/state/rheic-sandboxes
+ExecStart=/bin/sh @LAUNCHER@
+Restart=on-failure
+KillMode=mixed
+NoNewPrivileges=yes
+# The managed AF_UNIX socket directory contract requires shared /tmp.
+PrivateTmp=no
+# ProtectHome is omitted: the bundle and state can reside under the home directory.
+
+[Install]
+WantedBy=default.target
