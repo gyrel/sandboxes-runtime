@@ -1,5 +1,9 @@
 # Linux alpha launcher template
 
+From r5 onward the Darwin launcher is maintained in-repo at
+`bundle/launcher/gyreld-launch-darwin.sh`; staging assembles it into
+`bin/gyreld-launch.sh`. The published r4 bundle launcher is otherwise unchanged.
+
 The Linux/arm64 launcher and systemd unit are shipped as templates. They have
 not yet been run on a native Linux host; live acceptance is a separate slice.
 Rootless operation is unsupported in the pinned alpha because loop-device
