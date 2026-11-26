@@ -67,6 +67,17 @@ and flow-revocation records. `reason` carries `size-limit` or `queue-full: dropp
   `require-egress-policy`, upstream forwarding behavior is preserved; with the flag set,
   startup fails closed instead.
 
+## Host alias opt-in
+
+A configuration that declares `hostIP` in `gatewayVirtualIPs` and installs a NAT row to
+`127.0.0.1` for that address (for example `192.168.127.254`) is treated as an explicit
+host-services opt-in for exactly that one alias: the NAT row is installed and the
+host-services gate authorizes it even when `hostServicesEnabled` is unset. This is what lets
+guest traffic reach a host loopback service through the daemon-generated gateway alias under a
+broad allow policy. The opt-in is scoped to the declared alias only; every other NAT row to
+loopback still requires `hostServicesEnabled`, and deny and port rules are unchanged. The
+posture remains deny-by-default for arbitrary loopback destinations.
+
 ## Limits of this verification
 
 Verified by unit tests in the gvproxy packages (fail-closed writer injection, schema golden
