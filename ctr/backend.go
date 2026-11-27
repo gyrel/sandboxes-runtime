@@ -221,6 +221,12 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	if err != nil {
 		return runtime.Handle{}, fmt.Errorf("start create journal: %w", err)
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = w.Abort()
+		}
+	}()
 	if err := b.client.EnsureImageProgress(ctx, image, pullProgressForwarder(cfg)); err != nil {
 		return runtime.Handle{}, err
 	}
@@ -290,6 +296,7 @@ func (b *Backend) create(ctx context.Context, cfg *runtime.Config, proxyRoutes [
 	}
 	b.rememberSkills(id, skillsPin)
 	skillsPin = nil
+	committed = true
 	return runtime.Handle{ID: id, FIFODir: fifoDir}, nil
 }
 
