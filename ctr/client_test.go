@@ -1037,51 +1037,43 @@ func TestCreateMarksOnlyWorkspacesForOwnershipSemantics(t *testing.T) {
 	}
 }
 
-//nolint:nestif // The two outcomes share the same fake and journal assertions.
-func TestCreateJournalLifecycle(t *testing.T) {
-	for _, failPull := range []bool{false, true} {
-		t.Run(fmt.Sprint("pull_failure_", failPull), func(t *testing.T) {
-			state := t.TempDir()
-			journalPath := filepath.Join(state, "journal", "create-gyrel-dev.json")
-			runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
-				cmd := strings.Join(args, " ")
-				if strings.Contains(cmd, "images ls") {
-					data, err := os.ReadFile(journalPath)
-					if err != nil {
-						t.Fatalf("pending journal before image access: %v", err)
-					}
-					record, err := journal.Parse(data)
-					if err != nil || record.Phase != "pending" || len(record.Resources) != 0 {
-						t.Fatalf("pending record = %+v, %v", record, err)
-					}
-					if failPull {
-						return nil, errors.New("image failure")
-					}
-					return []byte("img\n"), nil
-				}
-				return nil, nil
-			}}
-			backend := &Backend{client: newTestClient(t, runner), image: "img", stateDir: state}
-			handle, err := backend.Create(context.Background(), runtime.Config{Name: "dev"})
-			if failPull {
-				if err == nil {
-					t.Fatal("expected image failure")
-				}
-				if _, err := os.Stat(journalPath); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				if err != nil {
-					t.Fatal(err)
-				}
-				if handle.FIFODir != filepath.Join(state, "fifo") {
-					t.Fatalf("fifo root = %q", handle.FIFODir)
-				}
-				if _, err := os.Stat(journalPath); !errors.Is(err, os.ErrNotExist) {
-					t.Fatalf("journal remains: %v", err)
-				}
-			}
-		})
+func TestCreateEnsureImageFailureAbortsJournalAndAllowsRetry(t *testing.T) {
+	state := t.TempDir()
+	dir := filepath.Join(state, "journal")
+	imageErr := errors.New("image failure")
+	failPull := true
+	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
+		if !strings.Contains(strings.Join(args, " "), "images ls") {
+			return nil, nil
+		}
+		data, err := os.ReadFile(filepath.Join(dir, "create-gyrel-dev.json"))
+		if err != nil {
+			t.Fatalf("pending journal before image access: %v", err)
+		}
+		record, err := journal.Parse(data)
+		if err != nil || record.Phase != "pending" || len(record.Resources) != 0 {
+			t.Fatalf("pending record = %+v, %v", record, err)
+		}
+		if failPull {
+			return nil, imageErr
+		}
+		return []byte("img\n"), nil
+	}}
+	backend := &Backend{client: newTestClient(t, runner), image: "img", stateDir: state}
+	cfg := runtime.Config{Name: "dev"}
+	if _, err := backend.Create(context.Background(), cfg); !errors.Is(err, imageErr) {
+		t.Fatalf("create error = %v", err)
+	}
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Fatalf("journal entries after failed create = %v, %v", entries, err)
+	}
+	failPull = false
+	handle, err := backend.Create(context.Background(), cfg)
+	if err != nil || handle.ID != "gyrel-dev" || handle.FIFODir != filepath.Join(state, "fifo") {
+		t.Fatalf("retry handle = %+v, err = %v", handle, err)
+	}
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Fatalf("journal entries after successful retry = %v, %v", entries, err)
 	}
 }
 
@@ -1104,7 +1096,7 @@ func TestCreateSuccessRemovesJournal(t *testing.T) {
 	}
 }
 
-func TestCreateRunFailureKeepsJournal(t *testing.T) {
+func TestCreateRunFailureAbortsJournal(t *testing.T) {
 	runErr := errors.New("synthetic run failure")
 	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
 		if strings.Contains(strings.Join(args, " "), " run --detach") {
@@ -1117,21 +1109,23 @@ func TestCreateRunFailureKeepsJournal(t *testing.T) {
 	if _, err := backend.Create(context.Background(), runtime.Config{Name: "dev"}); !errors.Is(err, runErr) {
 		t.Fatalf("err=%v", err)
 	}
-	data, err := os.ReadFile(filepath.Join(state, "journal", "create-gyrel-dev.json"))
-	if err != nil {
-		t.Fatalf("journal not kept after run failure: %v", err)
-	}
-	rec, perr := journal.Parse(data)
-	if perr != nil || rec.Phase != "run" || rec.ID != "gyrel-dev" {
-		t.Fatalf("journal record = %+v err=%v", rec, perr)
+	if _, err := os.Lstat(filepath.Join(state, "journal", "create-gyrel-dev.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("journal remains after run failure: %v", err)
 	}
 }
 
 func TestRecoverStopsOwnedNetworkAndRemovesJournal(t *testing.T) {
 	state := t.TempDir()
+	path := filepath.Join(state, "journal", "create-gyrel-dev.json")
+	var interruptedRecord []byte
 	runErr := errors.New("synthetic run failure")
 	runner := &fakeRunner{fn: func(args []string) ([]byte, error) {
 		if strings.Contains(strings.Join(args, " "), " run --detach") {
+			var err error
+			interruptedRecord, err = os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
 			return nil, runErr
 		}
 		return nil, nil
@@ -1144,6 +1138,10 @@ func TestRecoverStopsOwnedNetworkAndRemovesJournal(t *testing.T) {
 	if network.ownedStarts != 1 || network.lastToken == "" {
 		t.Fatalf("network not started with journal token: %+v", network)
 	}
+	// Restore the snapshot to model interruption before Abort could run.
+	if err := os.WriteFile(path, interruptedRecord, 0600); err != nil {
+		t.Fatal(err)
+	}
 	findings, err := backend.Recover(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -1154,7 +1152,7 @@ func TestRecoverStopsOwnedNetworkAndRemovesJournal(t *testing.T) {
 	if network.stopped != 1 {
 		t.Fatalf("owned network not stopped: %+v", network)
 	}
-	if _, err := os.Stat(filepath.Join(state, "journal", "create-gyrel-dev.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("journal survived reconciliation: %v", err)
 	}
 }
