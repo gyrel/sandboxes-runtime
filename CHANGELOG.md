@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.3 — 2026-11-27
+
+### Security
+
+- Managed launchers (darwin/linux) now pre-verify every mapped runtime artifact
+  against `build/digests.yaml` BEFORE writing state, starting containerd, or
+  handing off to the daemon — closing the audit finding where tampered
+  containerd bytes executed first (2026-11-25 synthetic control). Existing
+  `containerd.sock`/`sandboxesd.sock` files are no longer accepted by `-S`
+  alone: same-uid ownership plus liveness/PID provenance is required, only
+  provably-dead same-uid sockets are unlinked (TOCTOU-checked), and live
+  listeners of unverified provenance fail closed. Bootstrap records the
+  containerd PID; `python3` is now a documented prerequisite;
+  `--allow-unmanaged-runtime` skips verification (development only).
+
 ## Unreleased
 
 - ADR-0009 create journals use schema 2 with an optional validated `op_id`; schema 1 remains readable.

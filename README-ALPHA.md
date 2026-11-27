@@ -18,7 +18,9 @@ assembly. Follow the alpha bundle assembly and verifier instructions in
 [build/README.md](build/README.md#alpha-bundle-assembly); the verifier produces
 `RUNTIME-ARTIFACTS.json` and checks `build/digests.yaml`. Stage the Linux
 launcher as `bin/gyreld-launch.sh`. It reads those records for managed daemon
-arguments. Install e2fsprogs and ensure `mkfs.ext4` is on PATH.
+arguments. Install e2fsprogs and ensure `mkfs.ext4` is on PATH. Managed launchers
+also require `python3` for pre-boot artifact verification and socket provenance
+checks; `--allow-unmanaged-runtime` skips verification (development only).
 
 For a package path without spaces or sed metacharacters, substitute the absolute
 launcher path in the user unit, then reload systemd:

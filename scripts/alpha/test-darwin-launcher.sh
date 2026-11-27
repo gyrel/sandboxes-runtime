@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-tmp=$(mktemp -d)
+tmp=$(mktemp -d /tmp/gyrel-launch.XXXXXXXX)
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/bin" "$tmp/tools"
 cp "$root/bundle/launcher/gyreld-launch-darwin.sh" "$tmp/bin/gyreld-launch.sh"
@@ -38,4 +38,6 @@ else
 fi
 # Syntax check.
 bash -n "$root/bundle/launcher/gyreld-launch-darwin.sh"
+platform=darwin
+. "$root/scripts/alpha/launcher-boot-controls.sh"
 echo 'darwin launcher synthetic checks passed'
