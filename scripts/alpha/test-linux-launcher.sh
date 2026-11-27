@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-tmp=$(mktemp -d)
+tmp=$(mktemp -d /tmp/gyrel-launch.XXXXXXXX)
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/bin" "$tmp/build" "$tmp/runtime/bin" "$tmp/tools"
 cp "$root/bundle/launcher/gyreld-launch-linux.sh" "$tmp/bin/gyreld-launch.sh"
@@ -35,4 +35,6 @@ if [ "$(id -u)" -ne 0 ]; then
 else
   echo 'SKIP rootless refusal: test runs as root'
 fi
+platform=linux
+. "$root/scripts/alpha/launcher-boot-controls.sh"
 echo 'linux launcher synthetic checks passed'
